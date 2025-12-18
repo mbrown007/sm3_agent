@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+langchain
+langchain-core
+langchain-openai==0.1.17
+modelcontextprotocol==1.0.1
+chainlit
+httpx
+python-dotenv
+numpy
+prometheus-client

@@ -22,11 +22,11 @@ services:
       dockerfile: Dockerfile
     container_name: grafana-agent-backend-dev
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - MCP_SERVER_URL=http://mcp-server:8888
       - GRAFANA_URL=${GRAFANA_URL}
       - GRAFANA_TOKEN=${GRAFANA_TOKEN}
-      - MODEL=${MODEL:-claude-3-5-sonnet-20241022}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
       - CORS_ORIGINS=http://localhost:3000
       - SERVICE=backend
       - BACKEND_PORT=8000

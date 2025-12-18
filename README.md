@@ -4,7 +4,7 @@ An intelligent AI chat agent for Grafana observability, featuring proactive moni
 
 ## Overview
 
-This project combines a **Python-based AI agent** (using LangChain and Claude) with the **Grafana MCP server** to provide an intelligent interface for querying and monitoring your Grafana infrastructure.
+This project combines a **Python-based AI agent** (using LangChain and OpenAI) with the **Grafana MCP server** to provide an intelligent interface for querying and monitoring your Grafana infrastructure.
 
 ### Key Features
 
@@ -84,7 +84,7 @@ Access the services:
 #### Prerequisites
 
 - **MCP Server**: Go 1.21+
-- **Backend**: Python 3.10+, Claude API key
+- **Backend**: Python 3.10+, OpenAI API key
 - **Frontend**: Node.js 18+, npm
 
 #### 1. Start Grafana MCP Server
@@ -123,7 +123,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Set environment variables
-export ANTHROPIC_API_KEY="your-api-key"
+export OPENAI_API_KEY="your-api-key"
 export MCP_SERVER_URL="http://localhost:8888"
 export GRAFANA_URL="http://your-grafana-instance"
 export GRAFANA_TOKEN="your-grafana-api-token"
@@ -155,7 +155,7 @@ The UI will be available at `http://localhost:3000`.
 
 ### 🤖 AI Chat Agent
 
-The agent uses LangChain with Claude to provide natural language interaction with Grafana:
+The agent uses LangChain with OpenAI (GPT-4) to provide natural language interaction with Grafana:
 
 - **Natural Language Queries**: "Show me error rate in the last hour"
 - **Dashboard Discovery**: "What dashboards are available?"
@@ -280,11 +280,11 @@ Full API documentation available at `http://localhost:8000/docs` (Swagger UI).
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | ✅ | - | Claude API key from Anthropic |
+| `OPENAI_API_KEY` | ✅ | - | OpenAI API key from platform.openai.com |
 | `MCP_SERVER_URL` | ✅ | - | URL of the Grafana MCP server |
 | `GRAFANA_URL` | ✅ | - | Your Grafana instance URL |
 | `GRAFANA_TOKEN` | ✅ | - | Grafana API token (Service Account) |
-| `MODEL` | ❌ | `claude-3-5-sonnet-20241022` | Claude model to use |
+| `OPENAI_MODEL` | ❌ | `gpt-4o` | OpenAI model to use (gpt-4o, gpt-4o-mini, etc) |
 | `CORS_ORIGINS` | ❌ | `http://localhost:3000` | Comma-separated CORS origins |
 | `CACHE_MAX_SIZE` | ❌ | `1000` | Maximum cache entries |
 | `CACHE_DEFAULT_TTL` | ❌ | `300` | Default cache TTL (seconds) |
@@ -299,8 +299,8 @@ Full API documentation available at `http://localhost:8000/docs` (Swagger UI).
 
 **`.env` (root directory)**:
 ```bash
-# Claude API
-ANTHROPIC_API_KEY=sk-ant-api03-...
+# OpenAI API
+OPENAI_API_KEY=sk-...
 
 # MCP Server
 MCP_SERVER_URL=http://mcp-server:8888
@@ -310,7 +310,7 @@ GRAFANA_URL=https://your-grafana.com
 GRAFANA_TOKEN=glsa_...
 
 # Optional - Agent Configuration
-MODEL=claude-3-5-sonnet-20241022
+OPENAI_MODEL=gpt-4o
 CORS_ORIGINS=http://localhost:3000,http://localhost:8000
 CACHE_MAX_SIZE=1000
 CACHE_DEFAULT_TTL=300
@@ -417,7 +417,7 @@ docker-compose up -d --build
 cd sm3_agent
 docker build -t grafana-agent:latest .
 docker run -p 8000:8000 \
-  -e ANTHROPIC_API_KEY=your-key \
+  -e OPENAI_API_KEY=your-key \
   -e MCP_SERVER_URL=http://mcp-server:8888 \
   -e GRAFANA_URL=https://your-grafana.com \
   -e GRAFANA_TOKEN=your-token \
@@ -608,7 +608,7 @@ From `ENHANCEMENT_ROADMAP.md`:
 - Verify MCP server logs for errors
 
 **"Authentication failed"**
-- Check `ANTHROPIC_API_KEY` is set correctly
+- Check `OPENAI_API_KEY` is set correctly
 - Verify API key has sufficient credits
 - Check for typos in environment variables
 
@@ -657,7 +657,7 @@ From `ENHANCEMENT_ROADMAP.md`:
 
 ## Acknowledgments
 
-- **Anthropic** - Claude AI model
+- **OpenAI** - GPT-4 AI model
 - **Grafana Labs** - Grafana platform and MCP server
 - **LangChain** - Agent framework
 - **FastAPI** - Backend framework

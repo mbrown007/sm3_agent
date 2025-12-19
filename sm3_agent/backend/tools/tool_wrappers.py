@@ -16,6 +16,32 @@ logger = get_logger(__name__)
 formatter = ToolResultFormatter()
 
 
+def _extract_prometheus_uid(data: Any) -> str | None:
+    """Find a Prometheus datasource UID from list_datasources result."""
+    try:
+        items = []
+        if isinstance(data, list):
+            items = data
+        elif isinstance(data, dict):
+            # common MCP shape might wrap in "datasources"
+            if "datasources" in data and isinstance(data["datasources"], list):
+                items = data["datasources"]
+            elif "items" in data and isinstance(data["items"], list):
+                items = data["items"]
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            ds_type = item.get("type") or item.get("datasource_type")
+            if ds_type and "prometheus" in str(ds_type).lower():
+                uid = item.get("uid") or item.get("id")
+                if uid:
+                    return uid
+    except Exception:
+        return None
+    return None
+
+
 async def build_mcp_tools(settings: Settings) -> List[Tool]:
     """
     Dynamically discover and create LangChain Tool definitions from MCP server.
@@ -65,6 +91,13 @@ async def build_mcp_tools(settings: Settings) -> List[Tool]:
                                 arguments_dict = {}
                         else:
                             return "❌ Error: Unsupported argument type"
+
+                        # Auto-select Prometheus datasource if missing
+                        if tool_name == "list_prometheus_metric_names" and "datasource_uid" not in arguments_dict:
+                            ds_result = await client.invoke_tool("list_datasources", {})
+                            prom_uid = _extract_prometheus_uid(ds_result)
+                            if prom_uid:
+                                arguments_dict["datasource_uid"] = prom_uid
 
                         logger.info(f"Invoking MCP tool: {tool_name}", extra={"arguments": arguments_dict})
                         result = await client.invoke_tool(tool_name, arguments_dict)

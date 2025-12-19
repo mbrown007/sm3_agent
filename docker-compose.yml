@@ -1,48 +1,34 @@
 version: '3.8'
 
-services:
-  # Grafana MCP Server (Official Image)
-  mcp-server:
-    image: grafana/mcp-grafana:latest
-    container_name: grafana-mcp-server
-    environment:
-      - GRAFANA_URL=${GRAFANA_URL}
-      - GRAFANA_TOKEN=${GRAFANA_TOKEN}
-    command: ["--transport", "sse", "--address", "0.0.0.0:8888"]
-    ports:
-      - "8888:8888"
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8888/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-    networks:
-      - grafana-agent-network
+# Simplified docker-compose for running frontend + backend locally
+# Uses pre-built images from GitHub Container Registry
+# MCP Server and Grafana run on separate machines
 
-  # Python Agent Backend
+services:
+  # Python Agent Backend (pre-built from GHCR)
   agent:
-    build:
-      context: ./sm3_agent
-      dockerfile: Dockerfile
+    image: ghcr.io/brownster/sm3_agent-agent:latest
     container_name: grafana-agent-backend
     environment:
+      # Required - LLM Configuration
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - MCP_SERVER_URL=http://mcp-server:8888
+
+      # Required - External Services (on separate machines)
+      - MCP_SERVER_URL=${MCP_SERVER_URL}
       - GRAFANA_URL=${GRAFANA_URL}
       - GRAFANA_TOKEN=${GRAFANA_TOKEN}
+
+      # Optional - Agent Configuration
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - CACHE_MAX_SIZE=${CACHE_MAX_SIZE:-1000}
       - CACHE_DEFAULT_TTL=${CACHE_DEFAULT_TTL:-300}
+
+      # Service Configuration
       - SERVICE=backend
       - BACKEND_PORT=8000
     ports:
       - "8000:8000"
-    depends_on:
-      mcp-server:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
       interval: 30s
@@ -53,18 +39,15 @@ services:
     networks:
       - grafana-agent-network
 
-  # React Frontend
+  # React Frontend (pre-built from GHCR)
   frontend:
-    build:
-      context: ./frontend/web
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_URL=http://localhost:8000
+    image: ghcr.io/brownster/sm3_agent-frontend:latest
     container_name: grafana-agent-frontend
     ports:
       - "3000:80"
     depends_on:
-      - agent
+      agent:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
       interval: 30s
@@ -75,68 +58,6 @@ services:
     networks:
       - grafana-agent-network
 
-  # Optional: Grafana for testing
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana-test-instance
-    environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_LOG_LEVEL=debug
-      - GF_SERVER_ROUTER_LOGGING=true
-    ports:
-      - "3001:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./mcp-grafana/testdata/provisioning:/etc/grafana/provisioning
-      - ./mcp-grafana/testdata/dashboards:/var/lib/grafana/dashboards
-    restart: unless-stopped
-    networks:
-      - grafana-agent-network
-    profiles:
-      - testing
-
-  # Optional: Prometheus for metrics
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: grafana-agent-prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
-    restart: unless-stopped
-    networks:
-      - grafana-agent-network
-    profiles:
-      - monitoring
-
-  # Optional: Loki for logs
-  loki:
-    image: grafana/loki:latest
-    container_name: grafana-agent-loki
-    ports:
-      - "3100:3100"
-    command: -config.file=/etc/loki/loki-config.yml
-    volumes:
-      - ./loki-config.yml:/etc/loki/loki-config.yml
-      - loki-data:/loki
-    restart: unless-stopped
-    networks:
-      - grafana-agent-network
-    profiles:
-      - monitoring
-
 networks:
   grafana-agent-network:
     driver: bridge
-
-volumes:
-  grafana-data:
-  prometheus-data:
-  loki-data:

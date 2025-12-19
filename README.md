@@ -52,34 +52,48 @@ For manual installation or development of the MCP server itself, see: https://gi
 
 ## Quick Start
 
-### Option 1: Docker Compose (Recommended)
+### Option 1: Laptop Deployment (Recommended)
 
-The fastest way to get started with the full stack:
+Use pre-built images from GitHub Container Registry. Perfect if MCP server and Grafana are on separate machines.
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/grafana-web-agent.git
-cd grafana-web-agent
+# 1. Pull pre-built images
+docker pull ghcr.io/brownster/sm3_agent-agent:latest
+docker pull ghcr.io/brownster/sm3_agent-frontend:latest
 
-# Copy environment file and configure
+# 2. Configure environment
 cp .env.example .env
-# Edit .env with your API keys and settings
+nano .env
+# Set: OPENAI_API_KEY, MCP_SERVER_URL (your server), GRAFANA_URL, GRAFANA_TOKEN
 
-# Start everything
+# 3. Start services
 docker-compose up -d
 
-# View logs
+# 4. View logs
 docker-compose logs -f
 ```
 
-Access the services:
+**Access**:
 - **Web UI**: http://localhost:3000
 - **Backend API**: http://localhost:8000
 - **API Docs**: http://localhost:8000/docs
-- **Grafana**: http://localhost:3001
-- **Prometheus**: http://localhost:9090
+- **Metrics**: http://localhost:8000/metrics
 
-### Option 2: Manual Setup
+**What runs locally**: Frontend + Backend only
+**External**: MCP Server + Grafana on your monitoring server
+
+### Option 2: Full Stack (Development/Testing)
+
+Run everything locally including test Grafana:
+
+```bash
+# Start full stack
+docker-compose -f docker-compose.full.yml up -d
+```
+
+See [DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md) for all deployment scenarios.
+
+### Option 3: Manual Setup
 
 #### Prerequisites
 

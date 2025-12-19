@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from modelcontextprotocol.client import Client
-from modelcontextprotocol.client.streamable_http import streamablehttp_client
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 
 from backend.app.config import Settings
 from backend.tools.cache import get_cache
@@ -22,8 +22,11 @@ class MCPClient:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.client = Client(app_name="grafana-mcp-chat")
-        self._transport = None
+        self.session = None
+        self._transport_context = None
+        self._read = None
+        self._write = None
+        self._session_exit = None
         self._connection_attempts = 0
         self._max_retries = 3
 
@@ -43,7 +46,7 @@ class MCPClient:
         Raises:
             Exception: If connection fails after max retries
         """
-        if self.client.connected:
+        if self.session is not None:
             logger.debug("Already connected to MCP server")
             return
 
@@ -54,8 +57,14 @@ class MCPClient:
                     extra={"url": self.settings.mcp_server_url}
                 )
 
-                self._transport = streamablehttp_client(url=self.settings.mcp_server_url)
-                await self.client.connect(self._transport)
+                # Create transport context manager and enter it
+                self._transport_context = streamablehttp_client(url=self.settings.mcp_server_url)
+                self._read, self._write, _ = await self._transport_context.__aenter__()
+
+                # Create and initialize session
+                self.session = ClientSession(self._read, self._write)
+                self._session_exit = await self.session.__aenter__()
+                await self.session.initialize()
 
                 logger.info("Successfully connected to MCP server", extra={"url": self.settings.mcp_server_url})
                 self._connection_attempts = 0
@@ -80,19 +89,26 @@ class MCPClient:
     async def disconnect(self) -> None:
         """Gracefully disconnect from the MCP server."""
         try:
-            if self.client.connected:
-                # Note: MCP Client doesn't have explicit disconnect in current API
-                # but we mark intent to disconnect for future compatibility
+            if self.session is not None:
                 logger.info("Disconnecting from MCP server")
-                # Reset connection state
-                self._transport = None
-                self._connection_attempts = 0
+                # Exit session context
+                await self.session.__aexit__(None, None, None)
+                self.session = None
+
+            if self._transport_context is not None:
+                # Exit transport context
+                await self._transport_context.__aexit__(None, None, None)
+                self._transport_context = None
+
+            self._read = None
+            self._write = None
+            self._connection_attempts = 0
         except Exception as e:
             logger.warning(f"Error during disconnect: {e}")
 
     async def ensure_connected(self) -> None:
         """Ensure connection is established, reconnect if needed."""
-        if not self.client.connected:
+        if self.session is None:
             logger.warning("Connection lost, attempting to reconnect")
             await self.connect()
 
@@ -122,7 +138,7 @@ class MCPClient:
             await self.ensure_connected()
 
             logger.debug(f"Invoking tool: {name}", extra={"arguments": arguments})
-            response = await self.client.call_tool(name=name, arguments=arguments)
+            response = await self.session.call_tool(name=name, arguments=arguments)
 
             if response and hasattr(response, 'content'):
                 result = response.content

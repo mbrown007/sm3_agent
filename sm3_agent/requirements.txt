@@ -5,7 +5,7 @@ pydantic-settings
 langchain
 langchain-core
 langchain-openai==0.1.17
-modelcontextprotocol==1.0.1
+mcp>=1.9.3
 chainlit
 httpx
 python-dotenv

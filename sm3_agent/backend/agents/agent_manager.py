@@ -81,6 +81,22 @@ class AgentManager:
             )
         return self.session_memories[session_id]
 
+    def _format_tools(self) -> str:
+        """Return a newline-separated description of available tools."""
+        if not self.tools:
+            return "None"
+        lines = []
+        for tool in self.tools:
+            desc = tool.description if getattr(tool, "description", None) else ""
+            lines.append(f"- {tool.name}: {desc}")
+        return "\n".join(lines)
+
+    def _tool_names(self) -> str:
+        """Return a comma-separated list of tool names."""
+        if not self.tools:
+            return ""
+        return ", ".join([tool.name for tool in self.tools])
+
     def create_agent_executor(self, memory: ConversationBufferMemory) -> AgentExecutor:
         """
         Create a ReAct agent executor with the given memory.
@@ -133,11 +149,17 @@ class AgentManager:
         # Create agent executor with session-specific memory
         agent_executor = self.create_agent_executor(memory)
 
+        # Supply tool context expected by the prompt
+        tool_vars = {
+            "tools": self._format_tools(),
+            "tool_names": self._tool_names()
+        }
+
         logger.info(f"Processing message for session: {session_id}")
 
         try:
             # Execute the agent
-            result = await agent_executor.ainvoke({"input": message})
+            result = await agent_executor.ainvoke({"input": message, **tool_vars})
 
             # Extract the response
             response = result.get("output", "")
@@ -217,7 +239,7 @@ class AgentManager:
             response_text = ""
             tool_calls = []
 
-            async for chunk in agent_executor.astream({"input": message}):
+            async for chunk in agent_executor.astream({"input": message, **tool_vars}):
                 # Handle different chunk types
                 if "actions" in chunk:
                     # Tool execution started

@@ -28,6 +28,9 @@ settings = get_settings()
 logger = get_logger(__name__)
 agent_manager = AgentManager(settings=settings)
 
+# Store MCP client in app state
+mcp_client_instance = None
+
 app = FastAPI(
     title="Grafana MCP Chat API",
     version="0.2.0",

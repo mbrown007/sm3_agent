@@ -39,7 +39,13 @@ class AgentManager:
 
         # Create the prompt template for the agent
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", SYSTEM_PROMPT),
+            (
+                "system",
+                SYSTEM_PROMPT + (
+                    "\n\nYou have access to the following tools:\n{tools}\n\n"
+                    "Use the tool names from this list when deciding to act: {tool_names}"
+                ),
+            ),
             MessagesPlaceholder(variable_name="chat_history", optional=True),
             ("human", "{input}"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),

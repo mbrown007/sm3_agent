@@ -48,7 +48,7 @@ class AgentManager:
             ),
             MessagesPlaceholder(variable_name="chat_history", optional=True),
             ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
+            ("assistant", "{agent_scratchpad}"),
         ])
 
     async def initialize(self) -> None:

@@ -7,6 +7,7 @@ from langchain.agents import Tool as LangChainTool
 from langchain.memory import ConversationBufferMemory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
+import inspect
 
 from backend.app.config import Settings
 from backend.agents.suggestions import get_suggestion_engine
@@ -226,6 +227,8 @@ class AgentManager:
                     for action in chunk["actions"]:
                         tool_name = action.tool
                         tool_input = action.tool_input
+                        if inspect.iscoroutine(tool_input):
+                            tool_input = await tool_input
 
                         yield {
                             "type": "tool",
@@ -251,6 +254,10 @@ class AgentManager:
 
                         if action is None:
                             continue
+
+                        # Resolve coroutine observations if any
+                        if inspect.iscoroutine(observation):
+                            observation = await observation
 
                         yield {
                             "type": "tool",

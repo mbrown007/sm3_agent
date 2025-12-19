@@ -155,6 +155,12 @@ class AgentManager:
             "tool_names": self._tool_names()
         }
 
+        # Supply tool context expected by the prompt
+        tool_vars = {
+            "tools": self._format_tools(),
+            "tool_names": self._tool_names()
+        }
+
         logger.info(f"Processing message for session: {session_id}")
 
         try:

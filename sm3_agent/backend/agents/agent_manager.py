@@ -41,7 +41,11 @@ class AgentManager:
         self.prompt = ChatPromptTemplate.from_messages([
             (
                 "system",
-                SYSTEM_PROMPT + "\n\nYou have access to the registered MCP tools. Use them when helpful."
+                SYSTEM_PROMPT + (
+                    "\n\nYou have access to the registered MCP tools. Use them when helpful."
+                    "\nWhen needing Prometheus metrics, first call list_datasources, select a datasource where type contains 'prometheus',"
+                    " and pass its uid as datasource_uid to list_prometheus_metric_names. If none exists, state that clearly."
+                )
             ),
             MessagesPlaceholder(variable_name="chat_history", optional=True),
             ("human", "{input}"),

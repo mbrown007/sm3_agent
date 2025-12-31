@@ -26,6 +26,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - MCP_SERVER_URL=http://mcp-server:8888/mcp
       - GRAFANA_URL=${GRAFANA_URL}
+      - GRAFANA_PUBLIC_URL=${GRAFANA_PUBLIC_URL:-}
       - GRAFANA_TOKEN=${GRAFANA_TOKEN}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
       - CORS_ORIGINS=http://localhost:3000

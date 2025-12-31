@@ -7,6 +7,7 @@ and useful for the LLM agent.
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Dict, List
 
 
@@ -251,7 +252,12 @@ class ToolResultFormatter:
         if not items:
             return "No dashboards found."
 
-        lines = ["## Available Dashboards\n"]
+        grafana_base = (
+            os.getenv("GRAFANA_PUBLIC_URL")
+            or os.getenv("GRAFANA_URL")
+            or "http://localhost:3000"
+        ).rstrip("/")
+        lines = ["## Available Dashboards", ""]
         for idx, item in enumerate(items[:25], 1):  # cap output
             if not isinstance(item, dict):
                 continue
@@ -267,9 +273,11 @@ class ToolResultFormatter:
             if uid:
                 lines.append(f"   - UID: `{uid}`")
             if url:
-                # Format URL as a markdown link
-                link_text = url.split('/')[-1] or "View Dashboard"
-                lines.append(f"   - [View Dashboard](http://your-grafana-instance{url})")
+                if isinstance(url, str) and url.startswith("http"):
+                    full_url = url
+                else:
+                    full_url = f"{grafana_base}{url}"
+                lines.append(f"   - [View Dashboard]({full_url})")
             lines.append("")  # Add blank line between items
 
         if len(items) > 25:

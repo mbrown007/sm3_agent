@@ -14,6 +14,7 @@ services:
       # Required - External Services (on separate machines)
       - MCP_SERVER_URL=${MCP_SERVER_URL}
       - GRAFANA_URL=${GRAFANA_URL}
+      - GRAFANA_PUBLIC_URL=${GRAFANA_PUBLIC_URL:-}
       - GRAFANA_TOKEN=${GRAFANA_TOKEN}
 
       # Optional - Agent Configuration

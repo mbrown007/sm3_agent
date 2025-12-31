@@ -10,15 +10,23 @@ interface MarkdownContentProps {
  * Supports: headings, bold, italic, code blocks, links, lists
  */
 export function MarkdownContent({ content, className = '' }: MarkdownContentProps) {
+  const normalizeContent = (text: string): string => {
+    let normalized = text.replace(/\r\n/g, '\n');
+    // Ensure numbered/bullet lists split onto new lines when inlined.
+    normalized = normalized.replace(/([^\n])\s+(\d+\.\s)/g, '$1\n$2');
+    normalized = normalized.replace(/([^\n])\s+([-*+]\s)/g, '$1\n$2');
+    return normalized;
+  };
+
   // Parse markdown and convert to React elements
   const parseMarkdown = (text: string): React.ReactNode[] => {
     const elements: React.ReactNode[] = [];
     let key = 0;
 
     // Split by double newlines to find paragraphs/blocks
-    const blocks = text.split(/\n\n+/);
+    const blocks = normalizeContent(text).split(/\n\n+/);
 
-    blocks.forEach((block, blockIdx) => {
+    blocks.forEach((block) => {
       // Code blocks with ```
       const codeBlockMatch = block.match(/```(.+?)\n([\s\S]*?)```/);
       if (codeBlockMatch) {
@@ -66,7 +74,7 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
       if (isBulletList) {
         const items = lines
           .filter(line => line.trim().match(/^[-*+]\s/))
-          .map((line, idx) => (
+          .map((line) => (
             <li key={`bullet-${key++}`} className="ml-4">
               {parseInlineMarkdown(line.replace(/^[-*+]\s/, ''))}
             </li>
@@ -84,7 +92,7 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
       if (isNumberedList) {
         const items = lines
           .filter(line => line.trim().match(/^\d+\.\s/))
-          .map((line, idx) => (
+          .map((line) => (
             <li key={`numbered-${key++}`} className="ml-4">
               {parseInlineMarkdown(line.replace(/^\d+\.\s/, ''))}
             </li>
@@ -102,7 +110,7 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
       // Regular paragraph with inline formatting
       if (block.trim()) {
         elements.push(
-          <p key={`paragraph-${key++}`} className="my-2">
+          <p key={`paragraph-${key++}`} className="my-2 whitespace-pre-line">
             {parseInlineMarkdown(block)}
           </p>
         );

@@ -9,6 +9,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(() => `session-${Date.now()}`);
+  const [showToolCalls, setShowToolCalls] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -18,6 +19,21 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('showToolCalls');
+    if (saved !== null) {
+      setShowToolCalls(saved === 'true');
+    }
+  }, []);
+
+  const handleToggleToolCalls = () => {
+    setShowToolCalls((prev) => {
+      const next = !prev;
+      localStorage.setItem('showToolCalls', String(next));
+      return next;
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +136,32 @@ export default function ChatPage() {
 
   return (
     <div className="h-[calc(100vh-12rem)] flex flex-col">
-      <div className="flex-1 overflow-y-auto space-y-4 pb-4">
+      <div className="sticky top-0 z-10 bg-gray-900/80 backdrop-blur border-b border-gray-800 px-2 py-2">
+        <div className="flex items-center justify-end text-xs text-gray-400">
+          <button
+            type="button"
+            onClick={handleToggleToolCalls}
+            className="flex items-center gap-2 hover:text-gray-200 transition-colors"
+          >
+            <span className="uppercase tracking-wide">Tool calls</span>
+            <span className="text-gray-300">
+              {showToolCalls ? 'On' : 'Off'}
+            </span>
+            <span
+              className={`h-4 w-8 rounded-full p-0.5 transition-colors ${
+                showToolCalls ? 'bg-orange-500' : 'bg-gray-700'
+              }`}
+            >
+              <span
+                className={`block h-3 w-3 rounded-full bg-white transition-transform ${
+                  showToolCalls ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </span>
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto space-y-4 pb-4 pt-2">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-center">
             <div>
@@ -166,29 +207,37 @@ export default function ChatPage() {
                 )}
 
                 {/* Tool calls */}
-                {message.toolCalls && message.toolCalls.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {message.toolCalls.map((toolCall, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-gray-900/50 border border-gray-700 rounded p-2 text-sm"
-                      >
-                        <div className="flex items-center gap-2 text-blue-400 mb-1">
-                          <Wrench className="w-3 h-3" />
-                          <span className="font-mono">{toolCall.tool}</span>
-                        </div>
-                        {toolCall.result && (
-                          <div className="text-xs text-gray-400 mt-1 max-h-32 overflow-y-auto">
-                            <pre className="whitespace-pre-wrap break-words">
-                              {typeof toolCall.result === 'string'
-                                ? toolCall.result
-                                : JSON.stringify(toolCall.result, null, 2)}
-                            </pre>
+                {showToolCalls && message.toolCalls && message.toolCalls.length > 0 && (
+                  <details className="mt-3 bg-gray-900/40 border border-gray-700 rounded">
+                    <summary className="cursor-pointer select-none px-3 py-2 text-xs text-gray-300 flex items-center gap-2">
+                      <Wrench className="w-3 h-3 text-blue-400" />
+                      <span className="uppercase tracking-wide">
+                        Tool calls ({message.toolCalls.length})
+                      </span>
+                    </summary>
+                    <div className="px-3 pb-3 space-y-2">
+                      {message.toolCalls.map((toolCall, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-gray-900/50 border border-gray-700 rounded p-2 text-sm"
+                        >
+                          <div className="flex items-center gap-2 text-blue-400 mb-1">
+                            <Wrench className="w-3 h-3" />
+                            <span className="font-mono">{toolCall.tool}</span>
                           </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                          {toolCall.result && (
+                            <div className="text-xs text-gray-400 mt-1 max-h-32 overflow-y-auto">
+                              <pre className="whitespace-pre-wrap break-words">
+                                {typeof toolCall.result === 'string'
+                                  ? toolCall.result
+                                  : JSON.stringify(toolCall.result, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
                 )}
 
                 {/* Suggestions */}

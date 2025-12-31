@@ -304,6 +304,7 @@ Full API documentation available at `http://localhost:8000/docs` (full stack) or
 | `MCP_SERVER_URL` | Yes | - | URL of the Grafana MCP server |
 | `GRAFANA_URL` | Yes | - | Your Grafana instance URL |
 | `GRAFANA_TOKEN` | Yes | - | Grafana API token (Service Account) |
+| `GRAFANA_PUBLIC_URL` | No | - | Public Grafana URL for user-facing dashboard links |
 | `GRAFANA_ORG_ID` | No | `1` | Grafana org ID (when using service accounts) |
 | `OPENAI_MODEL` | No | `gpt-4o` | OpenAI model to use (gpt-4o, gpt-4o-mini, etc) |
 | `CORS_ORIGINS` | No | `http://localhost:3000` | Comma-separated CORS origins |
@@ -329,6 +330,7 @@ MCP_SERVER_URL=http://mcp-server:8888/mcp
 # Grafana
 GRAFANA_URL=https://your-grafana.com
 GRAFANA_TOKEN=glsa_...
+GRAFANA_PUBLIC_URL=https://your-grafana.com
 GRAFANA_ORG_ID=1
 
 # Optional - Agent Configuration

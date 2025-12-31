@@ -25,6 +25,18 @@ class Settings(BaseSettings):
         description="Enable LangChain tracing for debugging"
     )
 
+    # Alert analysis storage
+    kb_dir: str = Field(
+        "kb",
+        env="KB_DIR",
+        description="Path to local knowledge base files for alert analysis"
+    )
+    alert_analysis_dir: str = Field(
+        "alert-analyses",
+        env="ALERT_ANALYSIS_DIR",
+        description="Path to store alert analysis outputs"
+    )
+
     # CORS configuration
     cors_origins: Union[str, List[str]] = Field(
         default="http://localhost:3000,http://localhost:8001",

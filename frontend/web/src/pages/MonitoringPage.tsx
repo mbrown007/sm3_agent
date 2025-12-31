@@ -11,12 +11,13 @@ import {
   XCircle,
   AlertCircle
 } from 'lucide-react';
-import { monitoringApi } from '@/services/api';
+import { monitoringApi, alertsApi } from '@/services/api';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function MonitoringPage() {
   const queryClient = useQueryClient();
   const [selectedSeverity, setSelectedSeverity] = useState<string>('low');
+  const [expandedAnalysisId, setExpandedAnalysisId] = useState<string | null>(null);
 
   // Fetch monitoring status
   const { data: status, isLoading: statusLoading } = useQuery({
@@ -37,6 +38,20 @@ export default function MonitoringPage() {
     queryKey: ['monitoring-alerts', selectedSeverity],
     queryFn: () => monitoringApi.getAlerts({ min_severity: selectedSeverity }),
     refetchInterval: 5000, // Refresh every 5 seconds
+  });
+
+  const { data: analysesData, isLoading: analysesLoading } = useQuery({
+    queryKey: ['alert-analyses'],
+    queryFn: alertsApi.getAnalyses,
+    refetchInterval: 10000, // Refresh every 10 seconds
+  });
+
+  const analyses = analysesData?.analyses || [];
+
+  const { data: analysisDetail, isLoading: analysisDetailLoading } = useQuery({
+    queryKey: ['alert-analysis', expandedAnalysisId],
+    queryFn: () => alertsApi.getAnalysis(expandedAnalysisId || ''),
+    enabled: !!expandedAnalysisId,
   });
 
   // Start monitoring mutation
@@ -83,6 +98,10 @@ export default function MonitoringPage() {
       default:
         return 'text-gray-400 bg-gray-500/20';
     }
+  };
+
+  const toggleAnalysis = (analysisId: string) => {
+    setExpandedAnalysisId((current) => (current === analysisId ? null : analysisId));
   };
 
   return (
@@ -219,10 +238,10 @@ export default function MonitoringPage() {
         )}
       </div>
 
-      {/* Recent Alerts */}
+      {/* Recent Proactive Engine Alerts */}
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">Recent Alerts</h2>
+          <h2 className="text-xl font-bold">Recent Proactive Engine Alerts</h2>
           <select
             value={selectedSeverity}
             onChange={(e) => setSelectedSeverity(e.target.value)}
@@ -239,7 +258,7 @@ export default function MonitoringPage() {
         ) : alerts.length === 0 ? (
           <div className="text-center text-gray-400 py-12">
             <AlertCircle className="w-12 h-12 mx-auto mb-3 text-gray-600" />
-            <p>No alerts to display.</p>
+            <p>No proactive alerts to display.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -282,6 +301,118 @@ export default function MonitoringPage() {
                         (expected: {anomaly.expected.toFixed(2)}, deviation: {(anomaly.deviation * 100).toFixed(1)}%)
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Alert Analyses */}
+      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold">Alert Analyses</h2>
+          <button
+            onClick={() => queryClient.invalidateQueries({ queryKey: ['alert-analyses'] })}
+            className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition-colors flex items-center gap-2"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </button>
+        </div>
+        {analysesLoading ? (
+          <div className="text-center text-gray-400 py-12">Loading analyses...</div>
+        ) : analyses.length === 0 ? (
+          <div className="text-center text-gray-400 py-12">
+            <AlertCircle className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+            <p>No alert analyses yet.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {analyses.map((analysis) => (
+              <div
+                key={analysis.id}
+                className="bg-gray-900/50 border border-gray-700 rounded-lg p-4"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <AlertTriangle className="w-4 h-4 text-orange-400" />
+                      <span className="font-semibold">{analysis.alert_name}</span>
+                      <span className={`px-2 py-1 rounded text-xs ${getSeverityColor(analysis.severity)}`}>
+                        {analysis.severity}
+                      </span>
+                      {analysis.received_at && (
+                        <span className="text-xs opacity-75">
+                          {formatDistanceToNow(new Date(analysis.received_at), { addSuffix: true })}
+                        </span>
+                      )}
+                    </div>
+                    {analysis.summary && (
+                      <p className="text-sm text-gray-200">{analysis.summary}</p>
+                    )}
+                    <div className="text-xs text-gray-500 mt-2">
+                      KB matches: {analysis.kb_matches.length > 0
+                        ? analysis.kb_matches.map((match) => match.title).join(', ')
+                        : 'None'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => toggleAnalysis(analysis.id)}
+                    className="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors"
+                  >
+                    {expandedAnalysisId === analysis.id ? 'Hide' : 'View'} analysis
+                  </button>
+                </div>
+
+                {expandedAnalysisId === analysis.id && (
+                  <div className="mt-4 border-t border-gray-700 pt-4 text-sm text-gray-200 space-y-3">
+                    {analysisDetailLoading && (
+                      <div className="text-gray-400">Loading analysis details...</div>
+                    )}
+                    {!analysisDetailLoading && analysisDetail?.id === analysis.id && (
+                      <>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-400">Root Cause</div>
+                          <div>{analysisDetail.investigation.root_cause_hypothesis}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-400">Impact</div>
+                          <div>{analysisDetail.investigation.impact_assessment}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-400">Recommended Actions</div>
+                          <ul className="list-disc list-inside space-y-1">
+                            {analysisDetail.investigation.recommended_actions.map((action, idx) => (
+                              <li key={idx}>{action}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        {analysisDetail.investigation.related_evidence.length > 0 && (
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-gray-400">Evidence</div>
+                            <ul className="list-disc list-inside space-y-1 text-gray-300">
+                              {analysisDetail.investigation.related_evidence.map((item, idx) => (
+                                <li key={idx}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {analysisDetail.kb_matches.length > 0 && (
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-gray-400">Matched KB</div>
+                            <ul className="list-disc list-inside space-y-1 text-gray-300">
+                              {analysisDetail.kb_matches.map((match, idx) => (
+                                <li key={idx}>
+                                  {match.title} (score: {match.score})
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
               </div>

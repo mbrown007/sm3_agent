@@ -47,6 +47,49 @@ export interface Alert {
   acknowledged_by?: string;
 }
 
+export interface AlertAnalysisMatch {
+  title: string;
+  alert_name?: string | null;
+  source_file: string;
+  score: number;
+  matched_terms: string[];
+}
+
+export interface AlertAnalysisInvestigation {
+  summary: string;
+  root_cause_hypothesis: string;
+  impact_assessment: string;
+  recommended_actions: string[];
+  related_evidence: string[];
+  confidence: number;
+  investigated_at: string;
+}
+
+export interface AlertAnalysisSummary {
+  id: string;
+  alert_name: string;
+  severity: string;
+  status: string;
+  received_at?: string;
+  kb_matches: AlertAnalysisMatch[];
+  summary: string;
+  confidence: number;
+}
+
+export interface AlertAnalysisDetail {
+  id: string;
+  source: string;
+  status: string;
+  alert_name: string;
+  severity: string;
+  received_at: string;
+  labels: Record<string, any>;
+  annotations: Record<string, any>;
+  kb_matches: AlertAnalysisMatch[];
+  investigation: AlertAnalysisInvestigation;
+  raw_response?: string;
+}
+
 export interface Anomaly {
   index: number;
   timestamp: string;

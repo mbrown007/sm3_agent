@@ -3,6 +3,8 @@ import type {
   ChatRequest,
   ChatResponse,
   Alert,
+  AlertAnalysisDetail,
+  AlertAnalysisSummary,
   MonitoringTarget,
   MonitoringStatus,
   CacheStats,
@@ -117,6 +119,21 @@ export const monitoringApi = {
     const response = await api.post<Alert>(`/monitoring/alerts/${id}/acknowledge`, {
       acknowledged_by: acknowledgedBy,
     });
+    return response.data;
+  },
+};
+
+// Alert Analysis API
+export const alertsApi = {
+  getAnalyses: async (): Promise<{ count: number; analyses: AlertAnalysisSummary[] }> => {
+    const response = await api.get<{ count: number; analyses: AlertAnalysisSummary[] }>(
+      '/api/alerts/analyses'
+    );
+    return response.data;
+  },
+
+  getAnalysis: async (analysisId: string): Promise<AlertAnalysisDetail> => {
+    const response = await api.get<AlertAnalysisDetail>(`/api/alerts/analyses/${analysisId}`);
     return response.data;
   },
 };

@@ -36,10 +36,15 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - CACHE_MAX_SIZE=${CACHE_MAX_SIZE:-1000}
       - CACHE_DEFAULT_TTL=${CACHE_DEFAULT_TTL:-300}
+      - KB_DIR=${KB_DIR:-/data/kb}
+      - ALERT_ANALYSIS_DIR=${ALERT_ANALYSIS_DIR:-/data/alert-analyses}
       - SERVICE=backend
       - BACKEND_PORT=8000
     ports:
       - "8000:8000"
+    volumes:
+      - ./kb:/data/kb
+      - ./alert-analyses:/data/alert-analyses
     depends_on:
       mcp-server:
         condition: service_started

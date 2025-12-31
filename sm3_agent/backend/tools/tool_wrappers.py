@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Type
 
 import httpx
@@ -18,6 +20,73 @@ from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
 formatter = ToolResultFormatter()
+
+_RELATIVE_TIME_RE = re.compile(r"^now(?:-(\d+)([smhd]))?$")
+
+
+def _resolve_relative_time(value: str) -> str | None:
+    """Convert relative time (now-1h) to RFC3339 UTC timestamp."""
+    match = _RELATIVE_TIME_RE.match(value.strip().lower())
+    if not match:
+        return None
+
+    amount_str, unit = match.groups()
+    now = datetime.now(timezone.utc)
+
+    if amount_str and unit:
+        amount = int(amount_str)
+        delta_map = {
+            "s": timedelta(seconds=amount),
+            "m": timedelta(minutes=amount),
+            "h": timedelta(hours=amount),
+            "d": timedelta(days=amount),
+        }
+        now = now - delta_map[unit]
+
+    return now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _normalize_query_arguments(
+    tool_name: str,
+    arguments: Dict[str, Any],
+    force_step_seconds: bool = False
+) -> Dict[str, Any]:
+    """Apply defaults for query tools to avoid common MCP errors."""
+    if tool_name not in {"query_prometheus", "query_loki_logs"}:
+        return arguments
+
+    updated = dict(arguments)
+
+    if tool_name == "query_prometheus":
+        query_type = str(updated.get("queryType", "")).lower()
+        if force_step_seconds or query_type == "range" or "startTime" in updated or "endTime" in updated:
+            updated.setdefault("stepSeconds", 60)
+
+        for key in ("startTime", "endTime"):
+            raw = updated.get(key)
+            if isinstance(raw, str):
+                resolved = _resolve_relative_time(raw)
+                if resolved:
+                    updated[key] = resolved
+
+    if tool_name == "query_loki_logs":
+        for key in ("startRfc3339", "endRfc3339"):
+            raw = updated.get(key)
+            if isinstance(raw, str):
+                resolved = _resolve_relative_time(raw)
+                if resolved:
+                    updated[key] = resolved
+
+    return updated
+
+
+def _should_retry_query_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return (
+        "stepseconds must be provided" in message
+        or "parsing start time" in message
+        or "cannot parse \"now" in message
+    )
 
 
 def _build_args_schema(mcp_tool: Any) -> Optional[Type]:
@@ -292,11 +361,27 @@ async def build_mcp_tools(settings: Settings) -> List[Tool]:
                                     )
                                     return formatter.format(tool_name, fallback)
 
+                        arguments_dict = _normalize_query_arguments(tool_name, arguments_dict)
                         logger.info(f"Invoking MCP tool: {tool_name}", extra={"arguments": arguments_dict})
                         # Use a fresh MCP client per call to avoid cross-task teardown issues.
                         call_client = MCPClient(settings=settings)
                         try:
-                            result = await call_client.invoke_tool(tool_name, arguments_dict)
+                            try:
+                                result = await call_client.invoke_tool(tool_name, arguments_dict)
+                            except Exception as e:
+                                if _should_retry_query_error(e):
+                                    retry_args = _normalize_query_arguments(
+                                        tool_name,
+                                        arguments_dict,
+                                        force_step_seconds=True
+                                    )
+                                    logger.info(
+                                        "Retrying MCP tool with normalized arguments",
+                                        extra={"tool": tool_name, "arguments": retry_args}
+                                    )
+                                    result = await call_client.invoke_tool(tool_name, retry_args)
+                                else:
+                                    raise
                         finally:
                             await call_client.disconnect()
 

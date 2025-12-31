@@ -6,9 +6,12 @@ Receives alerts from Grafana, investigates with AI, and creates ServiceNow ticke
 from __future__ import annotations
 
 import json
+import re
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
@@ -24,6 +27,265 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 TICKETS_DIR = Path("/tmp/servicenow_tickets")
 TICKETS_DIR.mkdir(exist_ok=True)
 
+
+@dataclass
+class KnowledgeBaseEntry:
+    title: str
+    source_file: str
+    alert_name: Optional[str] = None
+    alert_expression: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    impact: Optional[str] = None
+    possible_causes: List[str] = field(default_factory=list)
+    next_steps: List[str] = field(default_factory=list)
+    extra_notes: List[str] = field(default_factory=list)
+    keywords: List[str] = field(default_factory=list)
+
+
+KB_CACHE: Dict[str, Any] = {
+    "entries": [],
+    "files": {}
+}
+
+
+def _get_kb_dir() -> Path:
+    settings = get_settings()
+    kb_dir = Path(settings.kb_dir)
+    kb_dir.mkdir(parents=True, exist_ok=True)
+    return kb_dir
+
+
+def _get_analysis_dir() -> Path:
+    settings = get_settings()
+    analysis_dir = Path(settings.alert_analysis_dir)
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+    return analysis_dir
+
+
+def _normalize_text(value: str) -> str:
+    value = value.lower()
+    value = re.sub(r"[^a-z0-9]+", " ", value)
+    return " ".join(value.split())
+
+
+_STOPWORDS = {
+    "alert",
+    "alerts",
+    "runbook",
+    "service",
+    "system",
+    "manager",
+    "communication",
+    "monitoring",
+    "status",
+    "issue",
+    "error",
+    "errors",
+    "warning",
+    "critical",
+    "high",
+    "low",
+    "medium",
+    "host",
+    "instance",
+    "service",
+    "device",
+    "node",
+    "server",
+    "application",
+    "problem",
+    "failure",
+}
+
+
+def _tokenize(value: str) -> List[str]:
+    tokens = re.findall(r"[a-z0-9]{3,}", value.lower())
+    return [token for token in tokens if token not in _STOPWORDS]
+
+
+def _parse_kb_entry(content: str, source_file: str) -> KnowledgeBaseEntry:
+    lines = [line.strip() for line in content.splitlines()]
+    title = next((line for line in lines if line), source_file)
+
+    section_map = {
+        "alert name": "alert_name",
+        "alert expression": "alert_expression",
+        "category": "category",
+        "description": "description",
+        "possible cause": "possible_causes",
+        "possible causes": "possible_causes",
+        "impact": "impact",
+        "next steps": "next_steps",
+        "extra notes": "extra_notes"
+    }
+
+    sections: Dict[str, List[str]] = {}
+    current_section = None
+
+    for line in lines:
+        if not line:
+            continue
+        match = re.match(r"^\s*([A-Za-z /()]+)\s*:\s*(.*)$", line)
+        if match:
+            header = match.group(1).lower()
+            header = re.sub(r"\(.*?\)", "", header).strip()
+            value = match.group(2).strip()
+            section_key = section_map.get(header)
+            if section_key:
+                current_section = section_key
+                sections.setdefault(section_key, [])
+                if value:
+                    sections[section_key].append(value)
+                continue
+        if current_section:
+            sections.setdefault(current_section, [])
+            sections[current_section].append(line)
+
+    def to_text(section: str) -> Optional[str]:
+        items = sections.get(section, [])
+        cleaned = [item.strip(" -\t") for item in items if item.strip()]
+        return " ".join(cleaned) if cleaned else None
+
+    def to_list(section: str) -> List[str]:
+        items = sections.get(section, [])
+        cleaned = [item.strip(" -\t") for item in items if item.strip()]
+        return cleaned
+
+    entry = KnowledgeBaseEntry(
+        title=title,
+        source_file=source_file,
+        alert_name=to_text("alert_name"),
+        alert_expression=to_text("alert_expression"),
+        category=to_text("category"),
+        description=to_text("description"),
+        impact=to_text("impact"),
+        possible_causes=to_list("possible_causes"),
+        next_steps=to_list("next_steps"),
+        extra_notes=to_list("extra_notes")
+    )
+
+    keyword_source = " ".join(
+        part for part in [
+            entry.title,
+            entry.alert_name,
+            entry.alert_expression,
+            entry.category,
+            entry.description,
+            entry.impact
+        ]
+        if part
+    )
+    entry.keywords = sorted(set(_tokenize(keyword_source)))
+    return entry
+
+
+def _load_kb_entries() -> List[KnowledgeBaseEntry]:
+    kb_dir = _get_kb_dir()
+    files = list(kb_dir.glob("*.txt"))
+    if not files:
+        return []
+
+    current_files = {str(path): path.stat().st_mtime for path in files}
+    if KB_CACHE["files"] == current_files:
+        return KB_CACHE["entries"]
+
+    entries = []
+    for path in files:
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            entries.append(_parse_kb_entry(content, path.name))
+        except Exception as exc:
+            logger.warning(f"Failed to read KB file {path}: {exc}")
+
+    KB_CACHE["entries"] = entries
+    KB_CACHE["files"] = current_files
+    return entries
+
+
+def _match_kb_entries(
+    alert_name: str,
+    labels: Dict[str, Any],
+    annotations: Dict[str, Any],
+    entries: List[KnowledgeBaseEntry],
+    limit: int = 3
+) -> List[Dict[str, Any]]:
+    if not entries:
+        return []
+
+    score_threshold = 2.0
+    alert_name_normalized = _normalize_text(alert_name or "")
+    search_blob = " ".join(
+        str(value)
+        for value in [
+            alert_name,
+            *labels.values(),
+            *annotations.values()
+        ]
+        if value is not None
+    )
+    search_tokens = set(_tokenize(search_blob))
+
+    matches = []
+    for entry in entries:
+        score = 0.0
+        matched_terms = set()
+        if entry.alert_name:
+            entry_alert = _normalize_text(entry.alert_name)
+            if entry_alert and (
+                entry_alert == alert_name_normalized
+                or entry_alert in alert_name_normalized
+                or alert_name_normalized in entry_alert
+            ):
+                score += 3.0
+
+        keyword_tokens = set(entry.keywords)
+        overlap = search_tokens.intersection(keyword_tokens)
+        if overlap:
+            matched_terms.update(overlap)
+            score += min(2.0, len(overlap) / 3)
+
+        if score >= score_threshold:
+            matches.append({
+                "entry": entry,
+                "score": round(score, 2),
+                "matched_terms": sorted(matched_terms)
+            })
+
+    matches.sort(key=lambda item: item["score"], reverse=True)
+    return matches[:limit]
+
+
+def _build_kb_context(matches: List[Dict[str, Any]]) -> str:
+    if not matches:
+        return ""
+
+    sections = []
+    for match in matches:
+        entry: KnowledgeBaseEntry = match["entry"]
+        lines = [
+            f"KB Title: {entry.title}",
+            f"Alert Name: {entry.alert_name}" if entry.alert_name else None,
+            f"Category: {entry.category}" if entry.category else None,
+            f"Description: {entry.description}" if entry.description else None,
+            f"Impact: {entry.impact}" if entry.impact else None
+        ]
+
+        if entry.possible_causes:
+            lines.append("Possible Causes:")
+            lines.extend([f"- {cause}" for cause in entry.possible_causes])
+
+        if entry.next_steps:
+            lines.append("Next Steps:")
+            lines.extend([f"- {step}" for step in entry.next_steps])
+
+        if entry.extra_notes:
+            lines.append("Extra Notes:")
+            lines.extend([f"- {note}" for note in entry.extra_notes])
+
+        sections.append("\n".join(line for line in lines if line))
+
+    return "\n\n".join(sections)
 
 # Grafana Alert Webhook Models
 class GrafanaAlertLabel(BaseModel):
@@ -73,6 +335,30 @@ class GrafanaWebhookPayload(BaseModel):
     truncatedAlerts: int = 0
 
 
+class AlertmanagerAlert(BaseModel):
+    """Single alert from Alertmanager webhook."""
+    status: str  # firing, resolved
+    labels: Dict[str, Any]
+    annotations: Dict[str, Any]
+    startsAt: str
+    endsAt: Optional[str] = None
+    generatorURL: Optional[str] = None
+    fingerprint: Optional[str] = None
+
+
+class AlertmanagerWebhookPayload(BaseModel):
+    """Alertmanager webhook payload structure."""
+    version: str
+    groupKey: str
+    status: str
+    receiver: str
+    groupLabels: Dict[str, Any]
+    commonLabels: Dict[str, Any]
+    commonAnnotations: Dict[str, Any]
+    externalURL: Optional[str] = None
+    alerts: List[AlertmanagerAlert]
+
+
 class AlertInvestigation(BaseModel):
     """AI-generated investigation result."""
     alert_name: str
@@ -84,6 +370,12 @@ class AlertInvestigation(BaseModel):
     related_evidence: List[str]
     confidence: float  # 0-1
     investigated_at: datetime
+
+
+class AlertInvestigationResult(BaseModel):
+    """Alert investigation with raw AI response."""
+    investigation: AlertInvestigation
+    raw_response: str
 
 
 class ServiceNowTicket(BaseModel):
@@ -159,6 +451,147 @@ async def grafana_webhook(
     }
 
 
+@router.post("/ingest")
+async def alertmanager_ingest(
+    payload: AlertmanagerWebhookPayload,
+    background_tasks: BackgroundTasks,
+    sync: bool = False
+):
+    """
+    Receive alert webhook from Alertmanager and write analysis files.
+
+    Use ?sync=true to process in-request (slower but immediate output).
+    """
+    logger.info(f"Received Alertmanager webhook: {payload.status}, {len(payload.alerts)} alert(s)")
+
+    if payload.status != "firing":
+        logger.info(f"Ignoring {payload.status} alert")
+        return {"status": "ignored", "reason": f"Alert status is {payload.status}"}
+
+    processed = []
+    for alert in payload.alerts:
+        analysis_id = _build_analysis_id(alert)
+        if sync:
+            await process_alertmanager_alert(alert=alert, analysis_id=analysis_id)
+            status = "processed"
+        else:
+            background_tasks.add_task(
+                process_alertmanager_alert,
+                alert=alert,
+                analysis_id=analysis_id
+            )
+            status = "queued"
+
+        processed.append({
+            "analysis_id": analysis_id,
+            "fingerprint": alert.fingerprint,
+            "status": status
+        })
+
+    return {
+        "status": "received",
+        "processed_count": len(processed),
+        "alerts": processed
+    }
+
+
+def _build_analysis_id(alert: AlertmanagerAlert) -> str:
+    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    fingerprint = alert.fingerprint or uuid4().hex[:8]
+    return f"alert-{timestamp}-{fingerprint}"
+
+
+async def process_alertmanager_alert(alert: AlertmanagerAlert, analysis_id: str) -> None:
+    """
+    Process Alertmanager alert: match KB, investigate with AI, write analysis file.
+    """
+    try:
+        alert_name = alert.labels.get("alertname", "Unknown Alert")
+        severity = str(alert.labels.get("severity", "info")).lower()
+        description = alert.annotations.get("description", "No description")
+        summary = alert.annotations.get("summary", alert_name)
+
+        kb_entries = _load_kb_entries()
+        kb_matches = _match_kb_entries(
+            alert_name=alert_name,
+            labels=alert.labels,
+            annotations=alert.annotations,
+            entries=kb_entries
+        )
+        kb_context = _build_kb_context(kb_matches)
+
+        investigation_result = await investigate_alert_with_ai(
+            alert_name=alert_name,
+            severity=severity,
+            description=description,
+            summary=summary,
+            metric_values={},
+            labels=alert.labels,
+            annotations=alert.annotations,
+            kb_context=kb_context
+        )
+
+        analysis_record = _build_analysis_record(
+            analysis_id=analysis_id,
+            alert=alert,
+            alert_name=alert_name,
+            severity=severity,
+            kb_matches=kb_matches,
+            investigation_result=investigation_result
+        )
+
+        analysis_dir = _get_analysis_dir()
+        analysis_file = analysis_dir / f"{analysis_id}.json"
+        analysis_file.write_text(
+            json.dumps(analysis_record, indent=2),
+            encoding="utf-8"
+        )
+
+        logger.info(f"Alert analysis written: {analysis_file}")
+    except Exception as exc:
+        logger.error(f"Error processing Alertmanager alert {analysis_id}: {exc}", exc_info=True)
+
+
+def _build_analysis_record(
+    analysis_id: str,
+    alert: AlertmanagerAlert,
+    alert_name: str,
+    severity: str,
+    kb_matches: List[Dict[str, Any]],
+    investigation_result: AlertInvestigationResult
+) -> Dict[str, Any]:
+    investigated_at = investigation_result.investigation.investigated_at.isoformat() + "Z"
+    return {
+        "id": analysis_id,
+        "source": "alertmanager",
+        "status": alert.status,
+        "alert_name": alert_name,
+        "severity": severity,
+        "received_at": datetime.utcnow().isoformat() + "Z",
+        "labels": alert.labels,
+        "annotations": alert.annotations,
+        "kb_matches": [
+            {
+                "title": match["entry"].title,
+                "alert_name": match["entry"].alert_name,
+                "source_file": match["entry"].source_file,
+                "score": match["score"],
+                "matched_terms": match["matched_terms"]
+            }
+            for match in kb_matches
+        ],
+        "investigation": {
+            "summary": investigation_result.investigation.summary,
+            "root_cause_hypothesis": investigation_result.investigation.root_cause_hypothesis,
+            "impact_assessment": investigation_result.investigation.impact_assessment,
+            "recommended_actions": investigation_result.investigation.recommended_actions,
+            "related_evidence": investigation_result.investigation.related_evidence,
+            "confidence": investigation_result.investigation.confidence,
+            "investigated_at": investigated_at
+        },
+        "raw_response": investigation_result.raw_response
+    }
+
 async def process_alert(
     alert: GrafanaAlert,
     common_labels: Dict[str, Any],
@@ -184,7 +617,7 @@ async def process_alert(
         metric_values = alert.values or {}
 
         # Run AI investigation
-        investigation = await investigate_alert_with_ai(
+        investigation_result = await investigate_alert_with_ai(
             alert_name=alert_name,
             severity=severity,
             description=description,
@@ -197,7 +630,7 @@ async def process_alert(
         # Create ServiceNow ticket (mock for now)
         ticket = await create_servicenow_ticket(
             alert=alert,
-            investigation=investigation,
+            investigation=investigation_result.investigation,
             severity=severity
         )
 
@@ -214,8 +647,9 @@ async def investigate_alert_with_ai(
     summary: str,
     metric_values: Dict[str, float],
     labels: Dict[str, Any],
-    annotations: Dict[str, Any]
-) -> AlertInvestigation:
+    annotations: Dict[str, Any],
+    kb_context: Optional[str] = None
+) -> AlertInvestigationResult:
     """
     Use AI agent to investigate the alert and gather context.
     """
@@ -224,6 +658,13 @@ async def investigate_alert_with_ai(
     # Build investigation prompt
     metrics_str = "\n".join([f"  - {k}: {v}" for k, v in metric_values.items()])
     labels_str = "\n".join([f"  - {k}: {v}" for k, v in labels.items()])
+
+    knowledge_context = ""
+    if kb_context:
+        knowledge_context = f"""
+**Knowledge Base References:**
+{kb_context}
+"""
 
     investigation_prompt = f"""
 An alert has fired in production and requires investigation:
@@ -239,6 +680,7 @@ An alert has fired in production and requires investigation:
 
 **Labels:**
 {labels_str}
+{knowledge_context}
 
 **Your Task:**
 Please investigate this alert by:
@@ -292,13 +734,16 @@ Focus on actionable insights for the on-call engineer.
         )
 
         logger.info(f"Investigation completed for {alert_name}")
-        return investigation
+        return AlertInvestigationResult(
+            investigation=investigation,
+            raw_response=ai_response
+        )
 
     except Exception as e:
         logger.error(f"Error during AI investigation: {e}", exc_info=True)
 
         # Fallback investigation if AI fails
-        return AlertInvestigation(
+        investigation = AlertInvestigation(
             alert_name=alert_name,
             severity=severity,
             summary=summary,
@@ -308,6 +753,10 @@ Focus on actionable insights for the on-call engineer.
             related_evidence=["AI investigation unavailable"],
             confidence=0.0,
             investigated_at=datetime.utcnow()
+        )
+        return AlertInvestigationResult(
+            investigation=investigation,
+            raw_response="AI investigation failed"
         )
 
 
@@ -495,6 +944,51 @@ def calculate_confidence(result) -> float:
 
 
 # Management endpoints
+@router.get("/analyses")
+async def list_alert_analyses(limit: int = 50):
+    """List recent alert analyses."""
+    analysis_dir = _get_analysis_dir()
+    analysis_files = sorted(
+        analysis_dir.glob("*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True
+    )[:limit]
+
+    analyses = []
+    for analysis_file in analysis_files:
+        try:
+            data = json.loads(analysis_file.read_text(encoding="utf-8"))
+            investigation = data.get("investigation", {})
+            analyses.append({
+                "id": data.get("id", analysis_file.stem),
+                "alert_name": data.get("alert_name", "Unknown Alert"),
+                "severity": data.get("severity", "info"),
+                "status": data.get("status", "unknown"),
+                "received_at": data.get("received_at"),
+                "kb_matches": data.get("kb_matches", []),
+                "summary": investigation.get("root_cause_hypothesis", ""),
+                "confidence": investigation.get("confidence", 0)
+            })
+        except Exception as exc:
+            logger.error(f"Error reading analysis {analysis_file}: {exc}")
+
+    return {
+        "count": len(analyses),
+        "analyses": analyses
+    }
+
+
+@router.get("/analyses/{analysis_id}")
+async def get_alert_analysis(analysis_id: str):
+    """Get a specific alert analysis."""
+    analysis_file = _get_analysis_dir() / f"{analysis_id}.json"
+
+    if not analysis_file.exists():
+        raise HTTPException(status_code=404, detail=f"Analysis {analysis_id} not found")
+
+    return json.loads(analysis_file.read_text(encoding="utf-8"))
+
+
 @router.get("/tickets")
 async def list_tickets(limit: int = 50):
     """

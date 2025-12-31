@@ -282,6 +282,12 @@ React-based interface with:
 - `GET /monitoring/alerts` - Get recent alerts
 - `POST /monitoring/alerts/{id}/acknowledge` - Acknowledge alert
 
+### Alert Analysis (Alertmanager)
+
+- `POST /api/alerts/ingest` - Ingest Alertmanager webhook and write analysis files
+- `GET /api/alerts/analyses` - List recent alert analyses
+- `GET /api/alerts/analyses/{id}` - Get analysis details
+
 ### Cache
 
 - `GET /cache/stats` - Get cache statistics
@@ -310,6 +316,8 @@ Full API documentation available at `http://localhost:8000/docs` (full stack) or
 | `CORS_ORIGINS` | No | `http://localhost:3000` | Comma-separated CORS origins |
 | `CACHE_MAX_SIZE` | No | `1000` | Maximum cache entries |
 | `CACHE_DEFAULT_TTL` | No | `300` | Default cache TTL (seconds) |
+| `KB_DIR` | No | `kb` | Local knowledge base directory for alert matching |
+| `ALERT_ANALYSIS_DIR` | No | `alert-analyses` | Directory to store alert analysis outputs |
 
 ### Frontend Environment Variables
 
@@ -338,6 +346,8 @@ OPENAI_MODEL=gpt-4o
 CORS_ORIGINS=http://localhost:3000,http://localhost:8000
 CACHE_MAX_SIZE=1000
 CACHE_DEFAULT_TTL=300
+KB_DIR=./kb
+ALERT_ANALYSIS_DIR=./alert-analyses
 ```
 
 **`frontend/web/.env`**:
@@ -431,6 +441,10 @@ docker-compose -f docker-compose.full.yml up -d --build
 - `grafana` - Grafana instance (for testing)
 - `prometheus` - Prometheus for metrics
 - `loki` - Loki for logs
+
+**Alert analysis files**:
+- Place KB runbooks in `./kb` (mounted to `/data/kb`)
+- Alert analyses are written to `./alert-analyses` (mounted to `/data/alert-analyses`)
 
 ### Building Individual Images
 

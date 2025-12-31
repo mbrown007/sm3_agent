@@ -30,12 +30,16 @@ services:
       - GRAFANA_TOKEN=${GRAFANA_TOKEN}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
       - CORS_ORIGINS=http://localhost:3000
+      - KB_DIR=${KB_DIR:-/data/kb}
+      - ALERT_ANALYSIS_DIR=${ALERT_ANALYSIS_DIR:-/data/alert-analyses}
       - SERVICE=backend
       - BACKEND_PORT=8000
     ports:
       - "8000:8000"
     volumes:
       - ./sm3_agent/backend:/app/backend
+      - ./kb:/data/kb
+      - ./alert-analyses:/data/alert-analyses
     depends_on:
       - mcp-server
     command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload

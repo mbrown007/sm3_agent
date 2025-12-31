@@ -17,6 +17,19 @@ This project combines a **Python-based AI agent** (using LangChain and OpenAI) w
 - **Prometheus Metrics** - Full observability with metrics export
 - **Tool Call Transparency** - See exactly what tools the agent uses
 
+<img width="1593" height="829" alt="image" src="https://github.com/user-attachments/assets/178120da-6427-4abd-97b3-bf9b4370c816" />
+
+<img width="1601" height="866" alt="image" src="https://github.com/user-attachments/assets/28ee2047-22f3-438d-b1ac-d9064ec6b110" />
+
+<img width="1558" height="799" alt="image" src="https://github.com/user-attachments/assets/d33b1e94-dfb1-4621-822a-3f9efe5902e6" />
+
+<img width="1562" height="803" alt="image" src="https://github.com/user-attachments/assets/c77628df-8acf-4d8b-8fca-47c28b8c34ee" />
+
+<img width="1908" height="747" alt="image" src="https://github.com/user-attachments/assets/7017c67f-1e94-4af8-8545-e00fc7bcb4d9" />
+
+<img width="1562" height="895" alt="image" src="https://github.com/user-attachments/assets/7ebb512a-1c96-41d5-9c9c-ab4d3cb0e4d7" />
+
+
 ## Project Structure
 
 ```

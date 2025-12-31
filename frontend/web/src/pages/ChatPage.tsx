@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, Wrench } from 'lucide-react';
 import { chatApi } from '@/services/api';
+import { MarkdownContent } from '@/components/MarkdownContent';
 import type { Message, ToolCall } from '@/types';
 
 export default function ChatPage() {
@@ -158,7 +159,11 @@ export default function ChatPage() {
                     : 'bg-gray-800 text-gray-100'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{message.content}</p>
+                {message.role === 'user' ? (
+                  <p className="whitespace-pre-wrap">{message.content}</p>
+                ) : (
+                  <MarkdownContent content={message.content} />
+                )}
 
                 {/* Tool calls */}
                 {message.toolCalls && message.toolCalls.length > 0 && (

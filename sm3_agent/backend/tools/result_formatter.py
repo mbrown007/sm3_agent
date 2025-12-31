@@ -223,7 +223,7 @@ class ToolResultFormatter:
 
     @staticmethod
     def _format_dashboard_search(result: Any) -> str:
-        """Format search_dashboards result into a concise list."""
+        """Format search_dashboards result into a concise, Markdown-formatted list."""
         items: List[Dict[str, Any]] = []
 
         # Handle MCP TextContent objects
@@ -251,26 +251,29 @@ class ToolResultFormatter:
         if not items:
             return "No dashboards found."
 
-        lines = []
-        for item in items[:25]:  # cap output
+        lines = ["## Available Dashboards\n"]
+        for idx, item in enumerate(items[:25], 1):  # cap output
             if not isinstance(item, dict):
                 continue
             title = item.get("title", "(untitled)")
-            dtype = item.get("type", "dash")
             uid = item.get("uid", "")
             url = item.get("url") or item.get("uri") or ""
             folder = item.get("folderTitle") or item.get("folder") or ""
-            parts = [title]
+            
+            # Format: Number. **Title** - UID: `uid-value`
+            lines.append(f"{idx}. **{title}**")
             if folder:
-                parts.append(f"folder: {folder}")
+                lines.append(f"   - Folder: {folder}")
             if uid:
-                parts.append(f"uid: {uid}")
+                lines.append(f"   - UID: `{uid}`")
             if url:
-                parts.append(f"url: {url}")
-            lines.append(f"• {', '.join(parts)} [{dtype}]")
+                # Format URL as a markdown link
+                link_text = url.split('/')[-1] or "View Dashboard"
+                lines.append(f"   - [View Dashboard](http://your-grafana-instance{url})")
+            lines.append("")  # Add blank line between items
 
         if len(items) > 25:
-            lines.append(f"... and {len(items) - 25} more")
+            lines.append(f"\n... and {len(items) - 25} more dashboards")
 
         return "\n".join(lines)
 

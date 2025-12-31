@@ -1,4 +1,4 @@
-# Grafana Web Agent
+﻿# Grafana Web Agent
 
 An intelligent AI chat agent for Grafana observability, featuring proactive monitoring, anomaly detection, and a modern web interface.
 
@@ -21,35 +21,35 @@ This project combines a **Python-based AI agent** (using LangChain and OpenAI) w
 
 ```
 .
-├── sm3_agent/                # Python AI agent backend
-│   └── backend/
-│       ├── agents/           # LangChain agent & proactive monitoring
-│       ├── api/              # FastAPI endpoints
-│       ├── intelligence/     # Anomaly detection engine
-│       ├── tools/            # MCP tools, caching, formatting
-│       ├── telemetry/        # Prometheus metrics
-│       └── app/              # FastAPI app
-│
-└── frontend/                 # Web UI
-    └── web/                  # React + TypeScript + Vite
-        ├── src/
-        │   ├── components/   # UI components
-        │   ├── pages/        # Chat & Monitoring pages
-        │   ├── services/     # API client
-        │   └── types/        # TypeScript types
-        └── package.json
+sm3_agent/                   # Python AI agent backend
+  backend/
+    agents/                  # LangChain agent & proactive monitoring
+    api/                     # FastAPI endpoints
+    intelligence/            # Anomaly detection engine
+    tools/                   # MCP tools, caching, formatting
+    telemetry/               # Prometheus metrics
+    app/                     # FastAPI app
+
+frontend/                    # Web UI
+  web/                       # React + TypeScript + Vite
+    src/
+      components/            # UI components
+      pages/                 # Chat & Monitoring pages
+      services/              # API client
+      types/                 # TypeScript types
+    package.json
 ```
 
 ## Prerequisites
 
 ### Grafana MCP Server
 
-This project uses the official [Grafana MCP Server](https://github.com/grafana/mcp-grafana) to communicate with Grafana. The server is automatically pulled as a Docker image when using Docker Compose.
+This project uses the official [Grafana MCP Server](https://github.com/grafana/mcp-grafana) to communicate with Grafana.
+The server can be pulled as a Docker image when using Docker Compose.
 
-**No need to clone or build** - the official `grafana/mcp-grafana:latest` image is used.
+**Note**: `docker-compose.full.yml` builds from a local `./mcp-grafana` folder if present. If you do not have it, either clone `https://github.com/grafana/mcp-grafana` or switch the service image to `grafana/mcp-grafana:latest`.
 
 For manual installation or development of the MCP server itself, see: https://github.com/grafana/mcp-grafana
-
 ## Quick Start
 
 ### Option 1: Laptop Deployment (Recommended)
@@ -75,9 +75,9 @@ docker-compose logs -f
 
 **Access**:
 - **Web UI**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
-- **Metrics**: http://localhost:8000/metrics
+- **Backend API**: http://localhost:7000
+- **API Docs**: http://localhost:7000/docs
+- **Metrics**: http://localhost:7000/metrics
 
 **What runs locally**: Frontend + Backend only
 **External**: MCP Server + Grafana on your monitoring server
@@ -88,8 +88,14 @@ Run everything locally including test Grafana:
 
 ```bash
 # Start full stack
-docker-compose -f docker-compose.full.yml up -d
+docker-compose -f docker-compose.full.yml up -d --build
 ```
+
+**Access**:
+- **Web UI**: http://localhost:8080
+- **Backend API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+- **Metrics**: http://localhost:8000/metrics
 
 See [DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md) for all deployment scenarios.
 
@@ -109,7 +115,7 @@ docker run -p 8888:8888 \
   -e GRAFANA_URL=https://your-grafana.com \
   -e GRAFANA_TOKEN=your-token \
   grafana/mcp-grafana:latest \
-  --transport sse --address 0.0.0.0:8888
+  --transport streamable-http --address 0.0.0.0:8888
 ```
 
 **Option B: From Source** (requires Go 1.21+)
@@ -119,10 +125,10 @@ git clone https://github.com/grafana/mcp-grafana.git
 cd mcp-grafana
 
 # Run
-go run cmd/mcp-grafana/main.go --transport sse --address localhost:8888
+go run cmd/mcp-grafana/main.go --transport streamable-http --address localhost:8888
 ```
 
-The MCP server will start on `http://localhost:8888`.
+The MCP server will start on `http://localhost:8888/mcp`.
 
 #### 2. Start Python Backend
 
@@ -138,7 +144,7 @@ pip install -r requirements.txt
 
 # Set environment variables
 export OPENAI_API_KEY="your-api-key"
-export MCP_SERVER_URL="http://localhost:8888"
+export MCP_SERVER_URL="http://localhost:8888/mcp"
 export GRAFANA_URL="http://your-grafana-instance"
 export GRAFANA_TOKEN="your-grafana-api-token"
 
@@ -167,7 +173,7 @@ The UI will be available at `http://localhost:3000`.
 
 ## Features in Detail
 
-### 🤖 AI Chat Agent
+### AI Chat Agent
 
 The agent uses LangChain with OpenAI (GPT-4) to provide natural language interaction with Grafana:
 
@@ -178,7 +184,7 @@ The agent uses LangChain with OpenAI (GPT-4) to provide natural language interac
 
 **Implementation**: `sm3_agent/backend/agents/agent_manager.py`
 
-### ⚡ Intelligent Caching
+### Intelligent Caching
 
 TTL-based LRU cache with tool-specific expiration:
 
@@ -190,7 +196,7 @@ Results in 10-100x performance improvement for repeated queries.
 
 **Implementation**: `sm3_agent/backend/tools/cache.py`
 
-### 🎯 Proactive Monitoring & Anomaly Detection
+### Proactive Monitoring & Anomaly Detection
 
 Background monitoring system that watches metrics and detects anomalies:
 
@@ -219,7 +225,7 @@ Background monitoring system that watches metrics and detects anomalies:
 - CPU usage per instance
 - Memory consumption
 
-### 📊 Prometheus Metrics
+### Prometheus Metrics
 
 Full observability with metrics export on `/metrics`:
 
@@ -240,7 +246,7 @@ Full observability with metrics export on `/metrics`:
 
 **Implementation**: `sm3_agent/backend/telemetry/metrics.py`
 
-### 🎨 Modern Web UI
+### Modern Web UI
 
 React-based interface with:
 
@@ -286,7 +292,7 @@ React-based interface with:
 - `GET /health` - Health check
 - `GET /metrics` - Prometheus metrics
 
-Full API documentation available at `http://localhost:8000/docs` (Swagger UI).
+Full API documentation available at `http://localhost:8000/docs` (full stack) or `http://localhost:7000/docs` (laptop).
 
 ## Configuration
 
@@ -294,20 +300,21 @@ Full API documentation available at `http://localhost:8000/docs` (Swagger UI).
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OPENAI_API_KEY` | ✅ | - | OpenAI API key from platform.openai.com |
-| `MCP_SERVER_URL` | ✅ | - | URL of the Grafana MCP server |
-| `GRAFANA_URL` | ✅ | - | Your Grafana instance URL |
-| `GRAFANA_TOKEN` | ✅ | - | Grafana API token (Service Account) |
-| `OPENAI_MODEL` | ❌ | `gpt-4o` | OpenAI model to use (gpt-4o, gpt-4o-mini, etc) |
-| `CORS_ORIGINS` | ❌ | `http://localhost:3000` | Comma-separated CORS origins |
-| `CACHE_MAX_SIZE` | ❌ | `1000` | Maximum cache entries |
-| `CACHE_DEFAULT_TTL` | ❌ | `300` | Default cache TTL (seconds) |
+| `OPENAI_API_KEY` | Yes | - | OpenAI API key from platform.openai.com |
+| `MCP_SERVER_URL` | Yes | - | URL of the Grafana MCP server |
+| `GRAFANA_URL` | Yes | - | Your Grafana instance URL |
+| `GRAFANA_TOKEN` | Yes | - | Grafana API token (Service Account) |
+| `GRAFANA_ORG_ID` | No | `1` | Grafana org ID (when using service accounts) |
+| `OPENAI_MODEL` | No | `gpt-4o` | OpenAI model to use (gpt-4o, gpt-4o-mini, etc) |
+| `CORS_ORIGINS` | No | `http://localhost:3000` | Comma-separated CORS origins |
+| `CACHE_MAX_SIZE` | No | `1000` | Maximum cache entries |
+| `CACHE_DEFAULT_TTL` | No | `300` | Default cache TTL (seconds) |
 
 ### Frontend Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `VITE_API_URL` | ❌ | `http://localhost:8000` | Backend API URL |
+| `VITE_API_URL` | No | `http://localhost:8000` | Backend API URL |
 
 ### Example Configuration Files
 
@@ -317,11 +324,12 @@ Full API documentation available at `http://localhost:8000/docs` (Swagger UI).
 OPENAI_API_KEY=sk-...
 
 # MCP Server
-MCP_SERVER_URL=http://mcp-server:8888
+MCP_SERVER_URL=http://mcp-server:8888/mcp
 
 # Grafana
 GRAFANA_URL=https://your-grafana.com
 GRAFANA_TOKEN=glsa_...
+GRAFANA_ORG_ID=1
 
 # Optional - Agent Configuration
 OPENAI_MODEL=gpt-4o
@@ -341,18 +349,18 @@ VITE_API_URL=http://localhost:8000
 
 ```
 User Query
-    ↓
+    |
 FastAPI Endpoint
-    ↓
+    |
 Agent Manager (LangChain)
-    ↓
+    |
 Tools (via MCP Client)
-    ├─→ Cache Check
-    ├─→ MCP Tool Invocation
-    └─→ Result Formatting
-    ↓
+    +-- Cache Check
+    +-- MCP Tool Invocation
+    +-- Result Formatting
+    |
 Streaming Response
-    ↓
+    |
 Web UI
 ```
 
@@ -360,25 +368,23 @@ Web UI
 
 ```
 Monitoring Loop (async)
-    ↓
+    |
 Check Enabled Targets
-    ↓
+    |
 Fetch Metrics (Prometheus/Loki)
-    ↓
+    |
 Anomaly Detection
-    ├─→ Z-Score Analysis
-    ├─→ IQR Analysis
-    ├─→ MAD Analysis
-    └─→ Rate of Change
-    ↓
+    +-- Z-Score Analysis
+    +-- IQR Analysis
+    +-- MAD Analysis
+    +-- Rate of Change
+    |
 Generate Alerts (if anomalies detected)
-    ↓
+    |
 Store in Alert History
-    ↓
+    |
 Notify via Callback (optional)
-```
-
-## Performance
+```## Performance
 
 ### Caching
 
@@ -397,23 +403,23 @@ Notify via Callback (optional)
 
 ### Docker Compose (Full Stack)
 
-The project includes a comprehensive `docker-compose.yml` that starts all services:
+The project includes a comprehensive `docker-compose.full.yml` that starts all services:
 
 ```bash
 # Start all services
-docker-compose up -d
+docker-compose -f docker-compose.full.yml up -d --build
 
 # Start specific services
-docker-compose up -d agent frontend
+docker-compose -f docker-compose.full.yml up -d agent frontend
 
 # View logs
-docker-compose logs -f agent
+docker-compose -f docker-compose.full.yml logs -f agent
 
 # Stop all services
-docker-compose down
+docker-compose -f docker-compose.full.yml down
 
 # Rebuild after code changes
-docker-compose up -d --build
+docker-compose -f docker-compose.full.yml up -d --build
 ```
 
 **Services included**:
@@ -432,7 +438,7 @@ cd sm3_agent
 docker build -t grafana-agent:latest .
 docker run -p 8000:8000 \
   -e OPENAI_API_KEY=your-key \
-  -e MCP_SERVER_URL=http://mcp-server:8888 \
+  -e MCP_SERVER_URL=http://mcp-server:8888/mcp \
   -e GRAFANA_URL=https://your-grafana.com \
   -e GRAFANA_TOKEN=your-token \
   grafana-agent:latest
@@ -447,17 +453,16 @@ docker run -p 3000:80 \
   grafana-agent-ui:latest
 ```
 
-**MCP Server**:
+**MCP Server** (optional, for local MCP development):
 ```bash
 cd mcp-grafana
 docker build -t grafana-mcp:latest .
 docker run -p 8888:8888 \
   -e GRAFANA_URL=https://your-grafana.com \
   -e GRAFANA_TOKEN=your-token \
-  grafana-mcp:latest
-```
-
-### Production Deployment
+  grafana-mcp:latest \
+  --transport streamable-http --address 0.0.0.0:8888
+```### Production Deployment
 
 #### Kubernetes
 
@@ -518,6 +523,23 @@ curl http://localhost:8000/metrics
 curl http://localhost:8888/health
 ```
 
+## LGTM Stack (Optional)
+
+This repo can be paired with a local Grafana + Prometheus + Loki stack from `docker-otel-lgtm`.
+That folder is kept outside this repo, but the flow below shows the expected setup.
+
+```powershell
+cd docker-otel-lgtm
+.\\build-lgtm.cmd
+.\\run-lgtm.ps1 -UseLocalImage $true
+```
+
+Prometheus scrape config is baked into the image from `docker-otel-lgtm/docker/prometheus.yaml`.
+If you change it, rebuild the image and restart the `lgtm` container.
+
+Useful endpoints:
+- Grafana: http://localhost:3000
+- Prometheus targets: http://localhost:9090/targets
 ## Development
 
 ### Backend
@@ -556,7 +578,7 @@ npm run preview
 npm run lint
 ```
 
-### Development with Docker
+## Development with Docker
 
 Use the development docker-compose file for hot-reloading:
 
@@ -570,21 +592,21 @@ docker-compose -f docker-compose.dev.yml up
 
 ## Implementation Phases
 
-### Phase 1: Core Enhancements ✅
+### Phase 1: Core Enhancements (Complete)
 
 - [x] Intelligent caching layer
 - [x] Response streaming (SSE)
 - [x] Suggested follow-up questions
 - [x] Tool result formatting
 
-### Phase 3: Intelligence ✅
+### Phase 3: Intelligence (Complete)
 
 - [x] Proactive monitoring system
 - [x] Anomaly detection (4 methods)
 - [x] Alert management API
 - [x] Background monitoring loop
 
-### Phase 4: Web UI ✅
+### Phase 4: Web UI (Complete)
 
 - [x] React + TypeScript foundation
 - [x] Chat interface with streaming
@@ -679,3 +701,10 @@ From `ENHANCEMENT_ROADMAP.md`:
 **Version**: 0.2.0
 **Status**: Production Ready
 **Last Updated**: 2025-12-18
+
+
+
+
+
+
+

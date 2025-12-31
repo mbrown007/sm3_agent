@@ -1,20 +1,20 @@
-# Deployment Options
+﻿# Deployment Options
 
 This project provides multiple docker-compose configurations for different deployment scenarios.
 
-## Option 1: Laptop Deployment (Recommended for Your Setup)
+## Option 1: Laptop Deployment (Recommended)
 
 **File**: `docker-compose.yml`
 
 **Use Case**: Run frontend + backend on your laptop, with MCP server and Grafana on separate machines.
 
 **What Runs Locally**:
-- ✅ Agent Backend (from GHCR)
-- ✅ Frontend UI (from GHCR)
+- Agent backend (from GHCR)
+- Frontend UI (from GHCR)
 
 **What's External**:
-- ❌ MCP Server (on monitoring server)
-- ❌ Grafana (on monitoring server)
+- MCP server (on monitoring server)
+- Grafana (on monitoring server)
 
 **Setup**:
 ```bash
@@ -30,6 +30,7 @@ nano .env
 # OPENAI_API_KEY=sk-...
 # MCP_SERVER_URL=http://your-monitoring-server:8888/mcp
 # GRAFANA_URL=https://your-grafana.com
+# GRAFANA_PUBLIC_URL=https://your-grafana.com
 # GRAFANA_TOKEN=glsa_...
 
 # 3. Start services
@@ -37,7 +38,7 @@ docker-compose up -d
 
 # 4. Access
 # Frontend: http://localhost:3000
-# Backend: http://localhost:8000
+# Backend: http://localhost:7000
 ```
 
 **Benefits**:
@@ -55,23 +56,23 @@ docker-compose up -d
 **Use Case**: Run everything locally including test Grafana, Prometheus, and Loki.
 
 **What Runs Locally**:
-- ✅ Agent Backend (built locally)
-- ✅ Frontend UI (built locally)
-- ✅ MCP Server (official image)
-- ✅ Test Grafana instance
-- ✅ Prometheus (optional, with profile)
-- ✅ Loki (optional, with profile)
+- Agent backend (built locally)
+- Frontend UI (built locally)
+- MCP server (built from local `./mcp-grafana`)
+- Test Grafana instance (optional)
+- Prometheus (optional, with profile)
+- Loki (optional, with profile)
 
 **Setup**:
 ```bash
 # Start everything
-docker-compose -f docker-compose.full.yml up -d
+docker-compose -f docker-compose.full.yml up -d --build
 
 # Or with monitoring
-COMPOSE_PROFILES=monitoring docker-compose -f docker-compose.full.yml up -d
+COMPOSE_PROFILES=monitoring docker-compose -f docker-compose.full.yml up -d --build
 
 # Or with test Grafana
-COMPOSE_PROFILES=testing docker-compose -f docker-compose.full.yml up -d
+COMPOSE_PROFILES=testing docker-compose -f docker-compose.full.yml up -d --build
 ```
 
 **Benefits**:
@@ -89,9 +90,9 @@ COMPOSE_PROFILES=testing docker-compose -f docker-compose.full.yml up -d
 **Use Case**: Local development with hot-reloading.
 
 **What Runs**:
-- ✅ Agent Backend (with auto-reload on code changes)
-- ✅ Frontend UI (Vite dev server with HMR)
-- ✅ MCP Server (official image)
+- Agent backend (auto-reload on code changes)
+- Frontend UI (Vite dev server with HMR)
+- MCP server (official image)
 
 **Setup**:
 ```bash
@@ -116,8 +117,8 @@ docker-compose -f docker-compose.dev.yml up
 |---------|---------------------|------------|-------------|
 | File | `docker-compose.yml` | `docker-compose.full.yml` | `docker-compose.dev.yml` |
 | Images | Pre-built (GHCR) | Build locally | Build locally |
-| MCP Server | External ⚡ | Included | Included |
-| Grafana | External ⚡ | Included (test) | External |
+| MCP Server | External | Included | Included |
+| Grafana | External | Included (test) | External |
 | Hot Reload | No | No | Yes |
 | Build Time | None | ~5 min | ~2 min |
 | Disk Usage | ~500MB | ~2GB | ~1GB |
@@ -135,9 +136,6 @@ docker-compose pull
 
 # Recreate containers with new images
 docker-compose up -d
-
-# Or specify version tag
-# docker-compose pull ghcr.io/brownster/sm3_agent-agent:v1.0.0
 ```
 
 ### Full Stack / Development (Built)
@@ -147,32 +145,38 @@ docker-compose up -d
 docker-compose -f docker-compose.full.yml build --no-cache
 
 # Recreate containers
-docker-compose -f docker-compose.full.yml up -d
+docker-compose -f docker-compose.full.yml up -d --build
 ```
 
 ---
 
 ## Environment Variables
 
-### Laptop Deployment
-
-**Required in .env**:
-```bash
-OPENAI_API_KEY=sk-...
-MCP_SERVER_URL=http://monitoring-server:8888/mcp    # Your MCP server
-GRAFANA_URL=https://your-grafana.com           # Your Grafana
-GRAFANA_TOKEN=glsa_...
-```
-
-### Full Stack / Development
+### Common
 
 **Required in .env**:
 ```bash
 OPENAI_API_KEY=sk-...
 GRAFANA_URL=https://your-grafana.com
 GRAFANA_TOKEN=glsa_...
-# MCP_SERVER_URL is automatic (http://mcp-server:8888/mcp)
 ```
+
+**Optional**:
+```bash
+GRAFANA_PUBLIC_URL=https://your-grafana.com
+GRAFANA_ORG_ID=1
+```
+
+### Laptop Deployment
+
+**Required in .env**:
+```bash
+MCP_SERVER_URL=http://monitoring-server:8888/mcp
+```
+
+### Full Stack / Development
+
+`MCP_SERVER_URL` is set automatically to `http://mcp-server:8888/mcp`.
 
 ---
 
@@ -180,21 +184,26 @@ GRAFANA_TOKEN=glsa_...
 
 ### Laptop Deployment
 - Frontend: http://localhost:3000
-- Backend: http://localhost:8000
-- API Docs: http://localhost:8000/docs
-- Metrics: http://localhost:8000/metrics
+- Backend: http://localhost:7000
+- API Docs: http://localhost:7000/docs
+- Metrics: http://localhost:7000/metrics
 
 **External**:
-- MCP Server: Your monitoring server
-- Grafana: Your Grafana instance
+- MCP Server: your monitoring server
+- Grafana: your Grafana instance
 
 ### Full Stack
-All services available locally:
+- Frontend: http://localhost:8080
+- Backend: http://localhost:8000
+- MCP Server: http://localhost:8888/mcp
+- Test Grafana (optional): http://localhost:3001
+- Prometheus (optional): http://localhost:9090
+- Loki (optional): http://localhost:3100
+
+### Development
 - Frontend: http://localhost:3000
 - Backend: http://localhost:8000
-- Test Grafana: http://localhost:3001
-- Prometheus: http://localhost:9090
-- Loki: http://localhost:3100
+- MCP Server: http://localhost:8888/mcp
 
 ---
 
@@ -240,44 +249,26 @@ Based on your requirements:
 
 ```bash
 # 1. MCP Server (on monitoring server)
-# Run as Go binary or Docker container
 ./mcp-grafana --transport streamable-http --address 0.0.0.0:8888
 
 # 2. Laptop (this machine)
 cp .env.example .env
-# Edit .env with remote MCP_SERVER_URL
+# Edit .env with remote MCP_SERVER_URL and Grafana URLs
+# Then:
 docker-compose up -d
 
-# Access at http://localhost:3000
+# Access UI at http://localhost:3000
 ```
 
 **Architecture**:
 ```
-┌─────────────────┐
-│  Your Laptop    │
-│                 │
-│  ┌──────────┐   │
-│  │ Frontend │   │
-│  │  :3000   │   │
-│  └────┬─────┘   │
-│       │         │
-│  ┌────▼─────┐   │
-│  │ Backend  │   │
-│  │  :8000   │   │
-│  └────┬─────┘   │
-└───────┼─────────┘
-        │ HTTP
-        ▼
-┌─────────────────┐
-│ Monitoring      │
-│ Server          │
-│                 │
-│  ┌──────────┐   │
-│  │   MCP    │   │
-│  │  Server  │◄──┼───► Grafana
-│  │  :8888   │   │
-│  └──────────┘   │
-└─────────────────┘
+Laptop
+  - Frontend (localhost:3000)
+  - Backend (localhost:7000)
+     |
+     | HTTP
+     v
+Monitoring Server
+  - MCP Server (:8888)
+  - Grafana
 ```
-
-Perfect for your use case! 🚀

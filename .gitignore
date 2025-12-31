@@ -62,9 +62,15 @@ logs/
 # MCP Grafana (separate project - use official Docker image)
 mcp-grafana/
 
+# LGTM stack repo (kept separate from agent repo)
+docker-otel-lgtm/
+
 # Temporary files
 tmp/
 temp/
 *.tmp
 .gocache/
 .gopath/
+
+# Local scripts
+test-mcp*.ps1

@@ -7,8 +7,9 @@ services:
     container_name: grafana-mcp-server-dev
     environment:
       - GRAFANA_URL=${GRAFANA_URL}
+      - GRAFANA_SERVICE_ACCOUNT_TOKEN=${GRAFANA_TOKEN}
       - GRAFANA_TOKEN=${GRAFANA_TOKEN}
-    command: ["--transport", "sse", "--address", "0.0.0.0:8888"]
+    command: ["--transport", "streamable-http", "--address", "0.0.0.0:8888"]
     ports:
       - "8888:8888"
     restart: unless-stopped
@@ -23,7 +24,7 @@ services:
     container_name: grafana-agent-backend-dev
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - MCP_SERVER_URL=http://mcp-server:8888
+      - MCP_SERVER_URL=http://mcp-server:8888/mcp
       - GRAFANA_URL=${GRAFANA_URL}
       - GRAFANA_TOKEN=${GRAFANA_TOKEN}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}

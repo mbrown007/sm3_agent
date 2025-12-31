@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, List, Optional
 from contextlib import AsyncExitStack
 
@@ -27,6 +28,7 @@ class MCPClient:
         self._exit_stack: Optional[AsyncExitStack] = None
         self._connection_attempts = 0
         self._max_retries = 3
+        self._connection_timeout = 10  # 10 second timeout per connection attempt
 
     async def __aenter__(self) -> MCPClient:
         """Async context manager entry - establishes connection."""
@@ -39,7 +41,7 @@ class MCPClient:
 
     async def connect(self) -> None:
         """
-        Establish a connection to the MCP server with retry logic.
+        Establish a connection to the MCP server with retry logic and timeout.
 
         Raises:
             Exception: If connection fails after max retries
@@ -56,26 +58,37 @@ class MCPClient:
                     extra={"url": self.settings.mcp_server_url}
                 )
 
-                # Use AsyncExitStack to properly manage context managers
-                self._exit_stack = AsyncExitStack()
-                await self._exit_stack.__aenter__()
-
-                # Enter transport context
-                read, write, _ = await self._exit_stack.enter_async_context(
-                    streamablehttp_client(url=self.settings.mcp_server_url)
+                # Use timeout to prevent indefinite hangs
+                await asyncio.wait_for(
+                    self._connect_with_timeout(),
+                    timeout=self._connection_timeout
                 )
-
-                # Enter session context
-                self.session = await self._exit_stack.enter_async_context(
-                    ClientSession(read, write)
-                )
-
-                # Initialize session
-                await self.session.initialize()
 
                 logger.info("Successfully connected to MCP server", extra={"url": self.settings.mcp_server_url})
                 self._connection_attempts = 0
                 return
+
+            except asyncio.TimeoutError:
+                last_error = asyncio.TimeoutError(
+                    f"Connection timeout ({self._connection_timeout}s) to MCP server at {self.settings.mcp_server_url}"
+                )
+                self._connection_attempts += 1
+                logger.error(
+                    f"Connection timeout: {last_error}",
+                    extra={
+                        "url": self.settings.mcp_server_url,
+                        "attempt": self._connection_attempts,
+                        "timeout_seconds": self._connection_timeout
+                    }
+                )
+                # Clean up exit stack on timeout
+                if self._exit_stack:
+                    try:
+                        await self._exit_stack.__aexit__(None, None, None)
+                    except:
+                        pass
+                    self._exit_stack = None
+                    self.session = None
 
             except Exception as e:
                 last_error = e
@@ -103,17 +116,55 @@ class MCPClient:
                         f"Failed to connect to MCP server after {self._max_retries} attempts: {last_error}"
                     ) from last_error
 
+    async def _connect_with_timeout(self) -> None:
+        """Internal method to establish connection (used with wait_for timeout)."""
+        # Use AsyncExitStack to properly manage context managers
+        self._exit_stack = AsyncExitStack()
+        await self._exit_stack.__aenter__()
+
+        logger.debug(f"Establishing transport to {self.settings.mcp_server_url}")
+        
+        # Enter transport context
+        try:
+            read, write, _ = await self._exit_stack.enter_async_context(
+                streamablehttp_client(url=self.settings.mcp_server_url)
+            )
+        except Exception as e:
+            logger.error(f"Failed to establish transport: {e}", exc_info=True)
+            raise
+
+        logger.debug("Transport established, creating client session")
+        
+        # Enter session context
+        try:
+            self.session = await self._exit_stack.enter_async_context(
+                ClientSession(read, write)
+            )
+        except Exception as e:
+            logger.error(f"Failed to create session: {e}", exc_info=True)
+            raise
+
+        # Initialize session
+        logger.debug("Initializing MCP session")
+        try:
+            await self.session.initialize()
+        except Exception as e:
+            logger.error(f"Failed to initialize session: {e}", exc_info=True)
+            raise
+
     async def disconnect(self) -> None:
         """Gracefully disconnect from the MCP server."""
         try:
             if self._exit_stack is not None:
                 logger.info("Disconnecting from MCP server")
                 await self._exit_stack.__aexit__(None, None, None)
-                self._exit_stack = None
-                self.session = None
-                self._connection_attempts = 0
         except Exception as e:
             logger.warning(f"Error during disconnect: {e}")
+        finally:
+            # Always reset state so the next call can reconnect cleanly.
+            self._exit_stack = None
+            self.session = None
+            self._connection_attempts = 0
 
     async def ensure_connected(self) -> None:
         """Ensure connection is established, reconnect if needed."""
@@ -143,29 +194,38 @@ class MCPClient:
             logger.info(f"Cache hit for tool: {name}")
             return cached_result
 
-        try:
-            await self.ensure_connected()
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                await self.ensure_connected()
 
-            logger.debug(f"Invoking tool: {name}", extra={"arguments": arguments})
-            response = await self.session.call_tool(name=name, arguments=arguments)
+                logger.debug(f"Invoking tool: {name}", extra={"arguments": arguments})
+                response = await self.session.call_tool(name=name, arguments=arguments)
 
-            if response and hasattr(response, 'content'):
-                result = response.content
+                if response and hasattr(response, 'content'):
+                    result = response.content
 
-                # Store in cache
-                cache.set(name, arguments, result)
+                    # Store in cache
+                    cache.set(name, arguments, result)
 
-                return result
-            else:
-                logger.warning(f"Tool {name} returned no content")
-                return {"error": f"No response from tool {name}"}
+                    return result
+                else:
+                    logger.warning(f"Tool {name} returned no content")
+                    return {"error": f"No response from tool {name}"}
 
-        except Exception as e:
-            logger.error(
-                f"Tool invocation failed: {e}",
-                extra={"tool": name, "arguments": arguments}
-            )
-            raise Exception(f"Failed to invoke tool '{name}': {str(e)}") from e
+            except Exception as e:
+                last_error = e
+                logger.error(
+                    f"Tool invocation failed: {e}",
+                    extra={"tool": name, "arguments": arguments, "attempt": attempt + 1}
+                )
+                # Retry once with a fresh connection in case the session is stale.
+                if attempt == 0:
+                    await self.disconnect()
+                    continue
+                break
+
+        raise Exception(f"Failed to invoke tool '{name}': {str(last_error)}") from last_error
 
     def invalidate_cache(self, tool_name: str, arguments: Dict[str, Any] = None):
         """

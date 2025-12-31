@@ -112,7 +112,7 @@ curl http://localhost:8888/health    # MCP server health
 
 **Environment Variables**:
 - `GRAFANA_URL` - Your Grafana instance
-- `GRAFANA_TOKEN` - API token for authentication
+- `GRAFANA_SERVICE_ACCOUNT_TOKEN` (or `GRAFANA_TOKEN`) - API token for authentication
 
 **Health Check**: `http://localhost:8888/health`
 
@@ -124,9 +124,9 @@ curl http://localhost:8888/health    # MCP server health
 
 **Environment Variables**:
 - `ANTHROPIC_API_KEY` - Claude API key
-- `MCP_SERVER_URL` - URL to MCP server (default: http://mcp-server:8888)
+- `MCP_SERVER_URL` - URL to MCP server (default: http://mcp-server:8888/mcp)
 - `GRAFANA_URL` - Your Grafana instance
-- `GRAFANA_TOKEN` - API token
+- `GRAFANA_SERVICE_ACCOUNT_TOKEN` (or `GRAFANA_TOKEN`) - API token
 - `MODEL` - Claude model to use
 - `CORS_ORIGINS` - Allowed CORS origins
 

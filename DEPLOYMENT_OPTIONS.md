@@ -28,7 +28,7 @@ nano .env
 
 # Set these in .env:
 # OPENAI_API_KEY=sk-...
-# MCP_SERVER_URL=http://your-monitoring-server:8888
+# MCP_SERVER_URL=http://your-monitoring-server:8888/mcp
 # GRAFANA_URL=https://your-grafana.com
 # GRAFANA_TOKEN=glsa_...
 
@@ -159,7 +159,7 @@ docker-compose -f docker-compose.full.yml up -d
 **Required in .env**:
 ```bash
 OPENAI_API_KEY=sk-...
-MCP_SERVER_URL=http://monitoring-server:8888    # Your MCP server
+MCP_SERVER_URL=http://monitoring-server:8888/mcp    # Your MCP server
 GRAFANA_URL=https://your-grafana.com           # Your Grafana
 GRAFANA_TOKEN=glsa_...
 ```
@@ -171,7 +171,7 @@ GRAFANA_TOKEN=glsa_...
 OPENAI_API_KEY=sk-...
 GRAFANA_URL=https://your-grafana.com
 GRAFANA_TOKEN=glsa_...
-# MCP_SERVER_URL is automatic (http://mcp-server:8888)
+# MCP_SERVER_URL is automatic (http://mcp-server:8888/mcp)
 ```
 
 ---
@@ -204,7 +204,7 @@ All services available locally:
 
 ```bash
 # Test connectivity from agent container
-docker exec grafana-agent-backend wget -O- $MCP_SERVER_URL/health
+docker exec grafana-agent-backend wget -O- http://mcp-server:8888/health
 
 # Check if MCP server is accessible from laptop
 curl http://your-monitoring-server:8888/health
@@ -241,7 +241,7 @@ Based on your requirements:
 ```bash
 # 1. MCP Server (on monitoring server)
 # Run as Go binary or Docker container
-./mcp-grafana --transport sse --address 0.0.0.0:8888
+./mcp-grafana --transport streamable-http --address 0.0.0.0:8888
 
 # 2. Laptop (this machine)
 cp .env.example .env

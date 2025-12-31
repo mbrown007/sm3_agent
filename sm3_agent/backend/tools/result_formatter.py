@@ -233,12 +233,14 @@ class ToolResultFormatter:
             try:
                 text = result[0].text
                 parsed = json.loads(text) if isinstance(text, str) else text
-                if isinstance(parsed, dict):
+                if isinstance(parsed, list):
+                    items = parsed
+                elif isinstance(parsed, dict):
                     result = parsed
             except:
                 pass
 
-        if isinstance(result, list):
+        if not items and isinstance(result, list):
             items = result
         elif isinstance(result, dict):
             if "items" in result and isinstance(result["items"], list):

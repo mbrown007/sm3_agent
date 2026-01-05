@@ -75,8 +75,12 @@ export default function ChatPage() {
         message: messageText,
         session_id: sessionId,
       })) {
+        console.log('[DEBUG] Received chunk:', chunk.type, chunk);
+        
         if (chunk.type === 'token' && chunk.message) {
+          console.log('[DEBUG] Token chunk length:', chunk.message.length, 'accumulated so far:', accumulatedContent.length);
           accumulatedContent += chunk.message;
+          console.log('[DEBUG] New accumulated length:', accumulatedContent.length);
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantMessageId
@@ -99,16 +103,36 @@ export default function ChatPage() {
             )
           );
         } else if (chunk.type === 'complete') {
-          // Final message might include suggestions
-          if (chunk.message) {
+          // Only use complete.message as fallback if no tokens were received
+          if (chunk.message && accumulatedContent.trim().length === 0) {
+            console.log('[DEBUG] No tokens received, using complete.message as fallback');
             accumulatedContent = chunk.message;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessageId
+                  ? { ...msg, content: accumulatedContent }
+                  : msg
+              )
+            );
+          } else {
+            console.log('[DEBUG] Keeping accumulated content from tokens:', accumulatedContent.length);
           }
         } else if (chunk.type === 'error') {
           accumulatedContent = `Error: ${chunk.message || 'An error occurred'}`;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: accumulatedContent }
+                : msg
+            )
+          );
         }
       }
 
       // Mark streaming as complete
+      console.log('[DEBUG] Streaming complete. Final accumulated content length:', accumulatedContent.length);
+      console.log('[DEBUG] Tool calls count:', toolCalls.length);
+      
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantMessageId

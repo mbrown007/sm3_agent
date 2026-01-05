@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import List, Union
+from typing import List, Optional, Union
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +15,31 @@ class Settings(BaseSettings):
         "http://localhost:3001/mcp",
         env="MCP_SERVER_URL",
         description="URL of the Grafana MCP server"
+    )
+    mcp_server_urls: Union[str, List[str]] = Field(
+        default="",
+        env="MCP_SERVER_URLS",
+        description="Comma-separated list of additional MCP server URLs"
+    )
+    mcp_server_names: Union[str, List[str]] = Field(
+        default="",
+        env="MCP_SERVER_NAMES",
+        description="Comma-separated list of MCP server labels"
+    )
+    mcp_execution_mode: str = Field(
+        "suggest",
+        env="MCP_EXECUTION_MODE",
+        description="Execution mode for command tools: suggest or execute"
+    )
+    mcp_command_allowlist: Union[str, List[str]] = Field(
+        default="ping,curl,nmap,snmpwalk,sshprobe",
+        env="MCP_COMMAND_ALLOWLIST",
+        description="Comma-separated allowlist for command execution tools"
+    )
+    mcp_audit_dir: str = Field(
+        "mcp-audit",
+        env="MCP_AUDIT_DIR",
+        description="Directory to write MCP command audit logs"
     )
 
     # LLM configuration
@@ -69,6 +94,14 @@ class Settings(BaseSettings):
             raise ValueError("MCP_SERVER_URL must start with http:// or https://")
         return v
 
+    @field_validator("mcp_execution_mode")
+    @classmethod
+    def validate_mcp_execution_mode(cls, v: str) -> str:
+        mode = v.strip().lower()
+        if mode not in {"suggest", "execute"}:
+            raise ValueError("MCP_EXECUTION_MODE must be 'suggest' or 'execute'")
+        return mode
+
     @field_validator("cors_origins", mode="after")
     @classmethod
     def parse_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
@@ -76,6 +109,27 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             # Split by comma and strip whitespace
             return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
+    @field_validator("mcp_server_urls", mode="after")
+    @classmethod
+    def parse_mcp_server_urls(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            return [url.strip() for url in v.split(",") if url.strip()]
+        return v
+
+    @field_validator("mcp_server_names", mode="after")
+    @classmethod
+    def parse_mcp_server_names(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            return [name.strip() for name in v.split(",") if name.strip()]
+        return v
+
+    @field_validator("mcp_command_allowlist", mode="after")
+    @classmethod
+    def parse_mcp_command_allowlist(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            return [cmd.strip() for cmd in v.split(",") if cmd.strip()]
         return v
 
     model_config = SettingsConfigDict(

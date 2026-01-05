@@ -11,7 +11,7 @@ import {
   XCircle,
   AlertCircle
 } from 'lucide-react';
-import { monitoringApi, alertsApi } from '@/services/api';
+import { monitoringApi, alertsApi, mcpApi } from '@/services/api';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function MonitoringPage() {
@@ -40,6 +40,14 @@ export default function MonitoringPage() {
     refetchInterval: 5000, // Refresh every 5 seconds
   });
 
+  const { data: mcpModeData, isLoading: mcpModeLoading } = useQuery({
+    queryKey: ['mcp-execution-mode'],
+    queryFn: mcpApi.getExecutionMode,
+    refetchInterval: 15000,
+  });
+
+  const mcpMode = mcpModeData?.mode || 'suggest';
+
   const { data: analysesData, isLoading: analysesLoading } = useQuery({
     queryKey: ['alert-analyses'],
     queryFn: alertsApi.getAnalyses,
@@ -67,6 +75,13 @@ export default function MonitoringPage() {
     mutationFn: monitoringApi.stop,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['monitoring-status'] });
+    },
+  });
+
+  const setMcpModeMutation = useMutation({
+    mutationFn: (mode: string) => mcpApi.setExecutionMode(mode),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mcp-execution-mode'] });
     },
   });
 
@@ -109,6 +124,27 @@ export default function MonitoringPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Proactive Monitoring</h1>
         <div className="flex gap-2">
+          <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300">
+            <span className="uppercase tracking-wide text-gray-400">MCP Commands</span>
+            <button
+              onClick={() => setMcpModeMutation.mutate('suggest')}
+              disabled={mcpModeLoading || setMcpModeMutation.isPending}
+              className={`px-2 py-1 rounded ${
+                mcpMode === 'suggest' ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300'
+              }`}
+            >
+              Suggest
+            </button>
+            <button
+              onClick={() => setMcpModeMutation.mutate('execute')}
+              disabled={mcpModeLoading || setMcpModeMutation.isPending}
+              className={`px-2 py-1 rounded ${
+                mcpMode === 'execute' ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-300'
+              }`}
+            >
+              Execute
+            </button>
+          </div>
           {status?.running ? (
             <button
               onClick={() => stopMutation.mutate()}

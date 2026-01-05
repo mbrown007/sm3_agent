@@ -13,6 +13,8 @@ services:
 
       # Required - External Services (on separate machines)
       - MCP_SERVER_URL=${MCP_SERVER_URL}
+      - MCP_SERVER_URLS=${MCP_SERVER_URLS:-}
+      - MCP_SERVER_NAMES=${MCP_SERVER_NAMES:-}
       - GRAFANA_URL=${GRAFANA_URL}
       - GRAFANA_PUBLIC_URL=${GRAFANA_PUBLIC_URL:-}
       - GRAFANA_TOKEN=${GRAFANA_TOKEN}
@@ -24,6 +26,9 @@ services:
       - CACHE_DEFAULT_TTL=${CACHE_DEFAULT_TTL:-300}
       - KB_DIR=${KB_DIR:-/data/kb}
       - ALERT_ANALYSIS_DIR=${ALERT_ANALYSIS_DIR:-/data/alert-analyses}
+      - MCP_EXECUTION_MODE=${MCP_EXECUTION_MODE:-suggest}
+      - MCP_COMMAND_ALLOWLIST=${MCP_COMMAND_ALLOWLIST:-ping,curl,nmap,snmpwalk,sshprobe}
+      - MCP_AUDIT_DIR=${MCP_AUDIT_DIR:-/data/mcp-audit}
 
       # Service Configuration
       - SERVICE=backend
@@ -33,6 +38,7 @@ services:
     volumes:
       - ./kb:/data/kb
       - ./alert-analyses:/data/alert-analyses
+      - ./mcp-audit:/data/mcp-audit
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
       interval: 30s

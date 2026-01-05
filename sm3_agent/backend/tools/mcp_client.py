@@ -22,8 +22,15 @@ class MCPClient:
     Uses AsyncExitStack to properly manage async context managers.
     """
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        server_url: Optional[str] = None,
+        cache_namespace: Optional[str] = None
+    ) -> None:
         self.settings = settings
+        self.server_url = server_url or settings.mcp_server_url
+        self.cache_namespace = cache_namespace
         self.session: Optional[ClientSession] = None
         self._exit_stack: Optional[AsyncExitStack] = None
         self._connection_attempts = 0
@@ -55,7 +62,7 @@ class MCPClient:
             try:
                 logger.info(
                     f"Connecting to MCP server (attempt {self._connection_attempts + 1}/{self._max_retries})",
-                    extra={"url": self.settings.mcp_server_url}
+                    extra={"url": self.server_url}
                 )
 
                 # Use timeout to prevent indefinite hangs
@@ -64,19 +71,19 @@ class MCPClient:
                     timeout=self._connection_timeout
                 )
 
-                logger.info("Successfully connected to MCP server", extra={"url": self.settings.mcp_server_url})
+                logger.info("Successfully connected to MCP server", extra={"url": self.server_url})
                 self._connection_attempts = 0
                 return
 
             except asyncio.TimeoutError:
                 last_error = asyncio.TimeoutError(
-                    f"Connection timeout ({self._connection_timeout}s) to MCP server at {self.settings.mcp_server_url}"
+                    f"Connection timeout ({self._connection_timeout}s) to MCP server at {self.server_url}"
                 )
                 self._connection_attempts += 1
                 logger.error(
                     f"Connection timeout: {last_error}",
                     extra={
-                        "url": self.settings.mcp_server_url,
+                        "url": self.server_url,
                         "attempt": self._connection_attempts,
                         "timeout_seconds": self._connection_timeout
                     }
@@ -96,7 +103,7 @@ class MCPClient:
                 logger.error(
                     f"Failed to connect to MCP server: {e}",
                     extra={
-                        "url": self.settings.mcp_server_url,
+                        "url": self.server_url,
                         "attempt": self._connection_attempts,
                         "max_retries": self._max_retries
                     }
@@ -122,12 +129,12 @@ class MCPClient:
         self._exit_stack = AsyncExitStack()
         await self._exit_stack.__aenter__()
 
-        logger.debug(f"Establishing transport to {self.settings.mcp_server_url}")
+        logger.debug(f"Establishing transport to {self.server_url}")
         
         # Enter transport context
         try:
             read, write, _ = await self._exit_stack.enter_async_context(
-                streamablehttp_client(url=self.settings.mcp_server_url)
+                streamablehttp_client(url=self.server_url)
             )
         except Exception as e:
             logger.error(f"Failed to establish transport: {e}", exc_info=True)
@@ -187,9 +194,10 @@ class MCPClient:
             Exception: If tool invocation fails
         """
         cache = get_cache()
+        cache_name = f"{self.cache_namespace}::{name}" if self.cache_namespace else name
 
         # Try to get from cache first
-        cached_result = cache.get(name, arguments)
+        cached_result = cache.get(cache_name, arguments)
         if cached_result is not None:
             logger.info(f"Cache hit for tool: {name}")
             return cached_result
@@ -206,7 +214,7 @@ class MCPClient:
                     result = response.content
 
                     # Store in cache
-                    cache.set(name, arguments, result)
+                    cache.set(cache_name, arguments, result)
 
                     return result
                 else:

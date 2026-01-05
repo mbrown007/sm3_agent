@@ -29,6 +29,8 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - MCP_SERVER_URL=http://mcp-server:8888/mcp
+      - MCP_SERVER_URLS=${MCP_SERVER_URLS:-}
+      - MCP_SERVER_NAMES=${MCP_SERVER_NAMES:-}
       - GRAFANA_URL=${GRAFANA_URL}
       - GRAFANA_PUBLIC_URL=${GRAFANA_PUBLIC_URL:-}
       - GRAFANA_TOKEN=${GRAFANA_TOKEN}
@@ -38,6 +40,9 @@ services:
       - CACHE_DEFAULT_TTL=${CACHE_DEFAULT_TTL:-300}
       - KB_DIR=${KB_DIR:-/data/kb}
       - ALERT_ANALYSIS_DIR=${ALERT_ANALYSIS_DIR:-/data/alert-analyses}
+      - MCP_EXECUTION_MODE=${MCP_EXECUTION_MODE:-suggest}
+      - MCP_COMMAND_ALLOWLIST=${MCP_COMMAND_ALLOWLIST:-ping,curl,nmap,snmpwalk,sshprobe}
+      - MCP_AUDIT_DIR=${MCP_AUDIT_DIR:-/data/mcp-audit}
       - SERVICE=backend
       - BACKEND_PORT=8000
     ports:
@@ -45,6 +50,7 @@ services:
     volumes:
       - ./kb:/data/kb
       - ./alert-analyses:/data/alert-analyses
+      - ./mcp-audit:/data/mcp-audit
     depends_on:
       mcp-server:
         condition: service_started

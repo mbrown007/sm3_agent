@@ -6,6 +6,7 @@ from backend.agents.agent_manager import AgentManager
 from backend.agents.proactive import create_default_targets, get_proactive_monitor
 from backend.api.monitoring import router as monitoring_router
 from backend.api.alerts import router as alerts_router
+from backend.api.mcp import router as mcp_router
 from backend.schemas.models import ChatRequest, ChatResponse
 from backend.telemetry.metrics import (
     chat_requests_total,
@@ -50,6 +51,7 @@ app.add_middleware(
 # Include routers
 app.include_router(monitoring_router)
 app.include_router(alerts_router, prefix="/api")
+app.include_router(mcp_router)
 
 
 @app.on_event("startup")
@@ -58,6 +60,9 @@ async def startup_event():
     logger.info("Starting Grafana MCP Chat API v0.2.0")
     logger.info(f"CORS origins: {settings.cors_origins}")
     logger.info(f"MCP server URL: {settings.mcp_server_url}")
+    if settings.mcp_server_urls:
+        logger.info(f"Additional MCP servers: {settings.mcp_server_urls}")
+    logger.info(f"MCP execution mode: {settings.mcp_execution_mode}")
 
     # Set agent info for Prometheus
     set_agent_info(

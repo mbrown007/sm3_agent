@@ -282,9 +282,15 @@ class AgentManager:
                         }
 
                         # Attach observation output to the most recent matching tool call
+                        logger.info(
+                            f"[DEBUG] Tool completed - tool={action.tool}, "
+                            f"observation_length={len(str(observation))}, "
+                            f"observation_preview='{str(observation)[:100]}...'"
+                        )
                         for existing in reversed(tool_calls):
                             if existing.get("tool") == action.tool and "output" not in existing:
                                 existing["output"] = str(observation)[:200]
+                                logger.info(f"[DEBUG] Attached observation to existing tool call: {action.tool}")
                                 break
                         else:
                             tool_calls.append({
@@ -292,20 +298,32 @@ class AgentManager:
                                 "input": getattr(action, "tool_input", None),
                                 "output": str(observation)[:200]
                             })
+                            logger.info(f"[DEBUG] Created new tool call entry: {action.tool}")
 
                 elif "output" in chunk:
                     # Final output
                     response_text = chunk["output"]
+                    logger.info(
+                        f"[DEBUG] Output chunk received for session {session_id}: "
+                        f"length={len(response_text)}, "
+                        f"first_100_chars='{response_text[:100]}...', "
+                        f"tool_calls_count={len(tool_calls)}"
+                    )
 
-                    # Stream the response text token by token
-                    words = response_text.split()
-                    for i, word in enumerate(words):
-                        yield {
-                            "type": "token",
-                            "message": word + (" " if i < len(words) - 1 else "")
-                        }
+                    # Don't stream word-by-word - just send the complete response as one token
+                    # This avoids spacing issues and ensures frontend gets exact content
+                    yield {
+                        "type": "token",
+                        "message": response_text
+                    }
 
             # Send completion event
+            logger.info(
+                f"[DEBUG] Sending complete event - session={session_id}, "
+                f"response_length={len(response_text)}, "
+                f"tool_calls_count={len(tool_calls)}, "
+                f"response_preview='{response_text[:200]}...'"
+            )
             yield {
                 "type": "complete",
                 "message": response_text,

@@ -78,3 +78,4 @@ test-mcp*.ps1
 # Local knowledge base and alert analysis outputs
 kb/
 alert-analyses/
+mcp-audit/

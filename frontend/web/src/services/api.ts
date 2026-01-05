@@ -151,6 +151,19 @@ export const cacheApi = {
   },
 };
 
+// MCP Control API
+export const mcpApi = {
+  getExecutionMode: async (): Promise<{ mode: string; allowlist: string[] }> => {
+    const response = await api.get<{ mode: string; allowlist: string[] }>('/api/mcp/execution-mode');
+    return response.data;
+  },
+
+  setExecutionMode: async (mode: string): Promise<{ mode: string }> => {
+    const response = await api.post<{ mode: string }>('/api/mcp/execution-mode', { mode });
+    return response.data;
+  },
+};
+
 // Health API
 export const healthApi = {
   check: async (): Promise<{ status: string; service: string }> => {

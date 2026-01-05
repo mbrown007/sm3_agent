@@ -321,6 +321,8 @@ Full API documentation available at `http://localhost:8000/docs` (full stack) or
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | Yes | - | OpenAI API key from platform.openai.com |
 | `MCP_SERVER_URL` | Yes | - | URL of the Grafana MCP server |
+| `MCP_SERVER_URLS` | No | - | Additional MCP server URLs (comma-separated) |
+| `MCP_SERVER_NAMES` | No | - | Labels for additional MCP servers (comma-separated) |
 | `GRAFANA_URL` | Yes | - | Your Grafana instance URL |
 | `GRAFANA_TOKEN` | Yes | - | Grafana API token (Service Account) |
 | `GRAFANA_PUBLIC_URL` | No | - | Public Grafana URL for user-facing dashboard links |
@@ -331,12 +333,22 @@ Full API documentation available at `http://localhost:8000/docs` (full stack) or
 | `CACHE_DEFAULT_TTL` | No | `300` | Default cache TTL (seconds) |
 | `KB_DIR` | No | `kb` | Local knowledge base directory for alert matching |
 | `ALERT_ANALYSIS_DIR` | No | `alert-analyses` | Directory to store alert analysis outputs |
+| `MCP_EXECUTION_MODE` | No | `suggest` | Command execution mode: suggest or execute |
+| `MCP_COMMAND_ALLOWLIST` | No | `ping,curl,nmap,snmpwalk,sshprobe` | Allowlist for command tools |
+| `MCP_AUDIT_DIR` | No | `mcp-audit` | Directory to write MCP command audit logs |
 
 ### Frontend Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `VITE_API_URL` | No | `http://localhost:8000` | Backend API URL |
+
+### Multiple MCP Servers & Command Execution
+
+- Extra MCP servers can be registered via `MCP_SERVER_URLS` and optional `MCP_SERVER_NAMES`.
+- Tools from additional servers are prefixed like `ssh__tool_name`.
+- Command-capable tools respect `MCP_EXECUTION_MODE` and `MCP_COMMAND_ALLOWLIST`.
+- Command audit logs are written to `MCP_AUDIT_DIR`.
 
 ### Example Configuration Files
 
@@ -347,6 +359,8 @@ OPENAI_API_KEY=sk-...
 
 # MCP Server
 MCP_SERVER_URL=http://mcp-server:8888/mcp
+MCP_SERVER_URLS=http://prometheus-mcp:7001/mcp,http://ssh-mcp:7002/mcp
+MCP_SERVER_NAMES=prometheus,ssh
 
 # Grafana
 GRAFANA_URL=https://your-grafana.com
@@ -361,6 +375,9 @@ CACHE_MAX_SIZE=1000
 CACHE_DEFAULT_TTL=300
 KB_DIR=./kb
 ALERT_ANALYSIS_DIR=./alert-analyses
+MCP_EXECUTION_MODE=suggest
+MCP_COMMAND_ALLOWLIST=ping,curl,nmap,snmpwalk,sshprobe
+MCP_AUDIT_DIR=./mcp-audit
 ```
 
 **`frontend/web/.env`**:
@@ -458,6 +475,7 @@ docker-compose -f docker-compose.full.yml up -d --build
 **Alert analysis files**:
 - Place KB runbooks in `./kb` (mounted to `/data/kb`)
 - Alert analyses are written to `./alert-analyses` (mounted to `/data/alert-analyses`)
+- MCP command audit logs are written to `./mcp-audit` (mounted to `/data/mcp-audit`)
 
 ### Building Individual Images
 

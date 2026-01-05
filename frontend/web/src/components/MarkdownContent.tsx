@@ -23,30 +23,47 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
     const elements: React.ReactNode[] = [];
     let key = 0;
 
-    // Split by double newlines to find paragraphs/blocks
-    const blocks = normalizeContent(text).split(/\n\n+/);
-
-    blocks.forEach((block) => {
-      // Code blocks with ```
-      const codeBlockMatch = block.match(/```(.+?)\n([\s\S]*?)```/);
-      if (codeBlockMatch) {
-        const language = codeBlockMatch[1] || 'plaintext';
-        const code = codeBlockMatch[2].trim();
+    const normalized = normalizeContent(text);
+    
+    // First, handle numbered lists specially - they may span multiple "blocks"
+    // Process the entire text line by line to properly group list items
+    const lines = normalized.split('\n');
+    let i = 0;
+    
+    while (i < lines.length) {
+      const line = lines[i];
+      
+      // Skip empty lines at the start
+      if (!line.trim()) {
+        i++;
+        continue;
+      }
+      
+      // Check for code blocks
+      if (line.trim().startsWith('```')) {
+        const language = line.trim().slice(3) || 'plaintext';
+        const codeLines: string[] = [];
+        i++;
+        while (i < lines.length && !lines[i].trim().startsWith('```')) {
+          codeLines.push(lines[i]);
+          i++;
+        }
+        i++; // skip closing ```
         elements.push(
           <pre key={`code-${key++}`} className="bg-gray-900 border border-gray-700 rounded p-3 overflow-x-auto my-2">
             <code className={`language-${language} text-sm text-gray-300`}>
-              {code}
+              {codeLines.join('\n')}
             </code>
           </pre>
         );
-        return;
+        continue;
       }
-
-      // Headings (# ## ###)
-      const headingMatch = block.match(/^(#{1,6})\s+(.*?)$/m);
+      
+      // Check for headings
+      const headingMatch = line.match(/^(#{1,6})\s+(.*?)$/);
       if (headingMatch) {
         const level = headingMatch[1].length;
-        const text = headingMatch[2];
+        const headingText = headingMatch[2];
         const HeadingTag = `h${level}` as keyof JSX.IntrinsicElements;
         const headingClasses = {
           h1: 'text-2xl font-bold mt-4 mb-2',
@@ -60,62 +77,111 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
           React.createElement(HeadingTag, {
             key: `heading-${key++}`,
             className: headingClasses[`h${level}` as keyof typeof headingClasses],
-            children: parseInlineMarkdown(text),
+            children: parseInlineMarkdown(headingText),
           })
         );
-        return;
+        i++;
+        continue;
       }
-
-      // Lists (bullet or numbered)
-      const lines = block.split('\n').filter(line => line.trim());
-      const isBulletList = lines.some(line => line.trim().match(/^[-*+]\s/));
-      const isNumberedList = lines.some(line => line.trim().match(/^\d+\.\s/));
-
-      if (isBulletList) {
-        const items = lines
-          .filter(line => line.trim().match(/^[-*+]\s/))
-          .map((line) => (
-            <li key={`bullet-${key++}`} className="ml-4">
-              {parseInlineMarkdown(line.replace(/^[-*+]\s/, ''))}
-            </li>
-          ));
-        if (items.length > 0) {
-          elements.push(
-            <ul key={`ul-${key++}`} className="list-disc space-y-1 my-2">
-              {items}
-            </ul>
-          );
-          return;
+      
+      // Check for numbered list (collect all items including sub-items)
+      if (line.trim().match(/^\d+\.\s/)) {
+        const listItems: { main: string; subItems: string[] }[] = [];
+        
+        while (i < lines.length) {
+          const currentLine = lines[i];
+          
+          // New numbered item
+          const numberedMatch = currentLine.match(/^\d+\.\s+(.*)/);
+          if (numberedMatch) {
+            listItems.push({ main: numberedMatch[1], subItems: [] });
+            i++;
+            continue;
+          }
+          
+          // Sub-item (indented with - or *)
+          const subItemMatch = currentLine.match(/^\s+[-*]\s+(.*)/);
+          if (subItemMatch && listItems.length > 0) {
+            listItems[listItems.length - 1].subItems.push(subItemMatch[1]);
+            i++;
+            continue;
+          }
+          
+          // Empty line - might be between list items, peek ahead
+          if (!currentLine.trim()) {
+            // Check if next non-empty line is a numbered item
+            let nextNonEmpty = i + 1;
+            while (nextNonEmpty < lines.length && !lines[nextNonEmpty].trim()) {
+              nextNonEmpty++;
+            }
+            if (nextNonEmpty < lines.length && lines[nextNonEmpty].match(/^\d+\.\s/)) {
+              i++;
+              continue;
+            }
+            // Not part of the list anymore
+            break;
+          }
+          
+          // Not a list item, stop processing list
+          break;
         }
+        
+        // Render the numbered list
+        elements.push(
+          <ol key={`ol-${key++}`} className="list-decimal space-y-2 my-2 ml-4">
+            {listItems.map((item, idx) => (
+              <li key={`li-${key++}-${idx}`}>
+                {parseInlineMarkdown(item.main)}
+                {item.subItems.length > 0 && (
+                  <ul className="list-disc ml-4 mt-1 space-y-1">
+                    {item.subItems.map((sub, subIdx) => (
+                      <li key={`sub-${key++}-${subIdx}`}>{parseInlineMarkdown(sub)}</li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ol>
+        );
+        continue;
       }
-
-      if (isNumberedList) {
-        const items = lines
-          .filter(line => line.trim().match(/^\d+\.\s/))
-          .map((line) => (
-            <li key={`numbered-${key++}`} className="ml-4">
-              {parseInlineMarkdown(line.replace(/^\d+\.\s/, ''))}
-            </li>
-          ));
-        if (items.length > 0) {
-          elements.push(
-            <ol key={`ol-${key++}`} className="list-decimal space-y-1 my-2">
-              {items}
-            </ol>
-          );
-          return;
+      
+      // Check for bullet list
+      if (line.trim().match(/^[-*+]\s/)) {
+        const items: string[] = [];
+        while (i < lines.length && lines[i].trim().match(/^[-*+]\s/)) {
+          items.push(lines[i].replace(/^[-*+]\s/, ''));
+          i++;
         }
+        elements.push(
+          <ul key={`ul-${key++}`} className="list-disc space-y-1 my-2 ml-4">
+            {items.map((item, idx) => (
+              <li key={`bullet-${key++}-${idx}`}>{parseInlineMarkdown(item)}</li>
+            ))}
+          </ul>
+        );
+        continue;
       }
-
-      // Regular paragraph with inline formatting
-      if (block.trim()) {
+      
+      // Regular paragraph - collect consecutive non-empty lines
+      const paragraphLines: string[] = [];
+      while (i < lines.length && lines[i].trim() && 
+             !lines[i].match(/^#{1,6}\s/) && 
+             !lines[i].match(/^\d+\.\s/) &&
+             !lines[i].match(/^[-*+]\s/) &&
+             !lines[i].startsWith('```')) {
+        paragraphLines.push(lines[i]);
+        i++;
+      }
+      
+      if (paragraphLines.length > 0) {
         elements.push(
           <p key={`paragraph-${key++}`} className="my-2 whitespace-pre-line">
-            {parseInlineMarkdown(block)}
+            {parseInlineMarkdown(paragraphLines.join('\n'))}
           </p>
         );
       }
-    });
+    }
 
     return elements;
   };

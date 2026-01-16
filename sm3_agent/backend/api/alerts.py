@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -31,8 +32,9 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 TICKETS_DIR = Path("/tmp/servicenow_tickets")
 TICKETS_DIR.mkdir(exist_ok=True)
 
-# Customer webhook state tracking
+# Customer webhook state tracking (thread-safe)
 _customer_webhook_state: Dict[str, Dict[str, Any]] = {}
+_webhook_state_lock = threading.Lock()
 
 # Notification callbacks for forwarding analyses (ServiceNow, Slack, etc.)
 _notification_callbacks: List[Callable[[str, Dict[str, Any]], None]] = []
@@ -49,22 +51,9 @@ def register_notification_callback(callback: Callable[[str, Dict[str, Any]], Non
 
 
 def get_webhook_state(customer_name: str) -> Dict[str, Any]:
-    """Get webhook state for a customer."""
-    return _customer_webhook_state.get(customer_name, {
-        "last_alert_received": None,
-        "total_alerts_received": 0,
-        "pending_analyses": 0,
-        "completed_analyses": 0,
-        "last_analysis_completed": None,
-        "mcp_containers_ready": False,
-        "errors": []
-    })
-
-
-def _update_webhook_state(customer_name: str, **updates) -> None:
-    """Update webhook state for a customer."""
-    if customer_name not in _customer_webhook_state:
-        _customer_webhook_state[customer_name] = {
+    """Get webhook state for a customer (thread-safe)."""
+    with _webhook_state_lock:
+        return _customer_webhook_state.get(customer_name, {
             "last_alert_received": None,
             "total_alerts_received": 0,
             "pending_analyses": 0,
@@ -72,8 +61,23 @@ def _update_webhook_state(customer_name: str, **updates) -> None:
             "last_analysis_completed": None,
             "mcp_containers_ready": False,
             "errors": []
-        }
-    _customer_webhook_state[customer_name].update(updates)
+        }).copy()  # Return copy to prevent external mutation
+
+
+def _update_webhook_state(customer_name: str, **updates) -> None:
+    """Update webhook state for a customer (thread-safe)."""
+    with _webhook_state_lock:
+        if customer_name not in _customer_webhook_state:
+            _customer_webhook_state[customer_name] = {
+                "last_alert_received": None,
+                "total_alerts_received": 0,
+                "pending_analyses": 0,
+                "completed_analyses": 0,
+                "last_analysis_completed": None,
+                "mcp_containers_ready": False,
+                "errors": []
+            }
+        _customer_webhook_state[customer_name].update(updates)
 
 
 @dataclass

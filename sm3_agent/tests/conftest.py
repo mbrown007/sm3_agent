@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 # Set test environment variables before importing app
 os.environ["TESTING"] = "true"
-os.environ["OPENAI_API_KEY"] = "test-key"
+os.environ["OPENAI_API_KEY"] = "sk-test-key-1234567890abcdefghijklmnopqrstuvwxyz"
 os.environ["MCP_SERVER_URL"] = "http://test-mcp:8888/mcp"
 
 

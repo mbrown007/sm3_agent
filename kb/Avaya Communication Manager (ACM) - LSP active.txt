@@ -1,0 +1,51 @@
+SM3 Alerts RunBook - Avaya Communication Manager (ACM) - LSP active
+KB0011837  -  v3.0 (Latest Version)
+
+1 views
+
+
+SM3 Alert RunBook – Avaya Communication Manager (ACM) - LSP active
+
+Alert Name: LSP active
+
+Alert Expression: acm_survivable_processor_active{type="acm"} * on (fqdn,number) group_left(name,network_region) (acm_survivable_processor_info) == 1
+
+Category: Avaya Enterprise (Convergence)
+
+Description: Local Survivable Processor is showing as active in main CM.
+
+Possible Cause(s):
+
+Network issue / communications failure between main CM and media gateways / DSP resources.
+Impact: 
+
+It should mean that local call processing should still work via the LSP but call routing could be affected for those users and they may not be able to make / receive all types of calls. Users on the main CM may not be able to contact users on the LSP.
+
+Next Steps:
+
+Log onto the main CM and run the command: 
+
+list survivable-processor
+
+Check to see if the 'Act' column still has a 'y' in it - if it is then the LSP is still active and has media resources registered to it.
+If the LSP is in a media gateway run the command list media-gateway to see if the gateway is registered. If it is not then this indicates a communication failure between CM and the MG.
+
+Run ping / traceroute commands from the CM to the LSP to see what the state of connectivity is.
+
+If the LSP is in a media gateway, run ping / traceroute commands from the CM to the MG to see what the state of connectivity is.
+
+If there is no connectivity then check if there are any ongoing network issues (may need to check with customer).
+
+Can also review the system logs in CM for IP events.
+
+
+Log into the LSP and run the command - status media-gateway - this will show if any media gateways are registered to the LSP. The command 'list registered' on the LSP will also show which phones the LSP has registered to it.
+
+Extra notes:
+
+ 
+
+
+
+Revised by Jack Rogan
+Last modified 5 months ago

@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+.env.mcp-credentials
 
 # Python
 __pycache__/
@@ -59,10 +60,10 @@ logs/
 # Docker
 .docker/
 
-# MCP Grafana (separate project - use official Docker image)
-mcp-grafana/
+# MCP Grafana (clone of grafana/mcp-grafana - use official Docker image in production)
+mcps/mcp-grafana/
 
-# LGTM stack repo (kept separate from agent repo)
+# LGTM stack repo (external dependency)
 docker-otel-lgtm/
 
 # Temporary files
@@ -72,10 +73,8 @@ temp/
 .gocache/
 .gopath/
 
-# Local scripts
-test-mcp*.ps1
-
-# Local knowledge base and alert analysis outputs
-kb/
+# Local data (kept out of version control)
 alert-analyses/
-mcp-audit/
+
+# Credentials (never commit)
+.env.mcp-credentials

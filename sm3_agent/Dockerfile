@@ -10,6 +10,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend backend
 COPY frontend frontend
+COPY mcp_servers.json ./
+COPY grafana_servers.json ./
 COPY readme.md ./
 COPY docker-entrypoint.sh ./
 

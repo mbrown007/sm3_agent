@@ -1,0 +1,41 @@
+﻿{
+  "version": "4",
+  "groupKey": "{alertname=\"Postgres Replication Lag\"}",
+  "status": "firing",
+  "receiver": "sm3-agent",
+  "groupLabels": {
+    "alertname": "Postgres Replication Lag"
+  },
+  "commonLabels": {
+    "alertname": "Postgres Replication Lag",
+    "severity": "high",
+    "service": "payments-db",
+    "environment": "prod"
+  },
+  "commonAnnotations": {
+    "summary": "Replication lag above threshold",
+    "description": "Postgres replication lag has exceeded 5 minutes."
+  },
+  "externalURL": "http://localhost:9093",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "Postgres Replication Lag",
+        "severity": "high",
+        "service": "payments-db",
+        "environment": "prod",
+        "instance": "pg-01"
+      },
+      "annotations": {
+        "summary": "Replication lag above threshold",
+        "description": "Postgres replication lag has exceeded 5 minutes.",
+        "runbook_url": "kb/postgres-replication-lag"
+      },
+      "startsAt": "2025-01-12T11:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=pg_replication_lag",
+      "fingerprint": "kb-sample-postgres-repl-lag"
+    }
+  ]
+}

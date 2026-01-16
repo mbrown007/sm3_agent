@@ -9,7 +9,7 @@ services:
       - GRAFANA_URL=${GRAFANA_URL}
       - GRAFANA_SERVICE_ACCOUNT_TOKEN=${GRAFANA_TOKEN}
       - GRAFANA_TOKEN=${GRAFANA_TOKEN}
-    command: ["--transport", "streamable-http", "--address", "0.0.0.0:8888"]
+    command: ["--transport", "streamable-http", "--address", "0.0.0.0:8888", "--debug"]
     ports:
       - "8888:8888"
     restart: unless-stopped
@@ -31,7 +31,7 @@ services:
       - GRAFANA_PUBLIC_URL=${GRAFANA_PUBLIC_URL:-}
       - GRAFANA_TOKEN=${GRAFANA_TOKEN}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
-      - CORS_ORIGINS=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3100,http://127.0.0.1:3000,http://127.0.0.1:3100
       - KB_DIR=${KB_DIR:-/data/kb}
       - ALERT_ANALYSIS_DIR=${ALERT_ANALYSIS_DIR:-/data/alert-analyses}
       - MCP_EXECUTION_MODE=${MCP_EXECUTION_MODE:-suggest}
@@ -61,7 +61,7 @@ services:
     environment:
       - VITE_API_URL=http://localhost:8000
     ports:
-      - "3000:3000"
+      - "3100:3000"
     volumes:
       - ./frontend/web:/app
       - /app/node_modules

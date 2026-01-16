@@ -1,0 +1,76 @@
+{
+  "_comment": "Configure your Grafana MCP servers here. Each server needs a name, URL (the MCP endpoint), and optional description.",
+  "servers": [
+    {
+      "name": "Local Dev",
+      "url": "http://localhost:3001/mcp",
+      "description": "Local development Grafana instance"
+    },
+    {
+      "name": "Vattenfall DE",
+      "url": "http://localhost:3101/mcp",
+      "description": "maas-1203.mon.sabio.cloud"
+    },
+    {
+      "name": "Segurcaixa",
+      "url": "http://localhost:3102/mcp",
+      "description": "maas-1171.mon.sabio.cloud"
+    },
+    {
+      "name": "Acolad",
+      "url": "http://localhost:3103/mcp",
+      "description": "maas-1206.mon.sabio.cloud"
+    },
+    {
+      "name": "[OD] Atlanta",
+      "url": "http://localhost:3104/mcp",
+      "description": "maas-1186.mon.sabio.cloud"
+    },
+    {
+      "name": "[OD] ATOS BPS",
+      "url": "http://localhost:3105/mcp",
+      "description": "maas-1195.mon.sabio.cloud"
+    },
+    {
+      "name": "[OD] DX",
+      "url": "http://localhost:3106/mcp",
+      "description": "maas-1138.mon.sabio.cloud"
+    },
+    {
+      "name": "[OD] Leeds Building Society",
+      "url": "http://localhost:3107/mcp",
+      "description": "maas-1115.mon.sabio.cloud"
+    },
+    {
+      "name": "[OD] NewDay Prod",
+      "url": "http://localhost:3108/mcp",
+      "description": "maas-1139.mon.sabio.cloud"
+    },
+    {
+      "name": "[OD] Reed and Mackay",
+      "url": "http://localhost:3109/mcp",
+      "description": "maas-1174.mon.sabio.cloud"
+    },
+    {
+      "name": "[OD] Royal London",
+      "url": "http://localhost:3110/mcp",
+      "description": "maas-1187.mon.sabio.cloud"
+    },
+    {
+      "name": "[OD] Transcom North",
+      "url": "http://localhost:3111/mcp",
+      "description": "maas-1110.mon.sabio.cloud"
+    },
+    {
+      "name": "[OD] Transcom South",
+      "url": "http://localhost:3112/mcp",
+      "description": "maas-1112.mon.sabio.cloud"
+    },
+    {
+      "name": "[OD] Volksbank",
+      "url": "http://localhost:3113/mcp",
+      "description": "maas-1206.mon.sabio.cloud"
+    }
+  ],
+  "default": "Local Dev"
+}

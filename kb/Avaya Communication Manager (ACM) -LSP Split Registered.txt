@@ -1,0 +1,42 @@
+(WIP) SM3 Alerts RunBook - Avaya Communication Manager (ACM) - LSP Split Registered Stations
+KB0011833  -  v2.0 (Latest Version)
+
+1 views
+
+
+SM3 Alert RunBook – Avaya Communication Manager (ACM) - LSP Split Registered Stations
+
+Alert Name: LSP Split Registered Stations
+
+Alert Expression: (sum(acm_survivable_processor_active{type="acm"} * on(fqdn, number) group_left(network_region, ess_name) (acm_survivable_processor_info == 0)) by (fqdn, network_region, ess_name) and sum(acm_registered_ip_station_info) by (fqdn, network_region) != 0) * on (fqdn, network_region) group_left(name, ip_address) label_replace(acm_network_region_info, "network_region", "$1", "number", "(.*)")
+
+Category: Avaya Enterprise (Convergence)
+
+Description: 
+
+Possible Cause(s):
+
+Media gateway(s) has registered with LSP.
+Impact: 
+
+System could be in LSP mode. This should mean that local calls are still working but there may be some disruption and users may not be able to contact each other.
+
+Next Steps:
+
+Check if main ACM is functioning normally. If it is, run the command: list survivable-processor on the main CM - it will show you that status of the LSP(s). Normally they should show 'Reg' = y and 'Act' = n. If they do not then this indicates the LSP is active and has at least one media-gateway registered to it.
+
+Run command: list media-gateway to check the status of the media gateways. They should have a 'y' in the "Reg?" column if they are registered to the main CM. Check which gateway(s) are not registered to the CM.
+
+On this screen you can also check if any recovery rule is assigned to the gateways in question. If there is one then you can see if there are any auto-recovery conditions defined using the command:
+
+display system-parameters mg-recovery-rule X
+
+Log on to the LSP and run the command: list media-gateway - you should see the gateway registered. If you run list registered then you will see what stations are registered to the LSP.
+
+Check if the LSP and gateway are pingable from the main CM - if they are and there are no other relevant alarms then the main CM should be in a position to be able to have the MG register back to it. If a recovery rule is set and the criteria are met, then this should happen automatically. If not, then it will be necessary to force a failback to the main CM. To do this then log onto the LSP as dadmin and run the command: reset system 4
+
+Make sure you run this command on the LSP not the main CM. Also note that this command could be service-affecting and drop any active calls on the LSP so check with the client a convenient time to do this.
+
+If the main CM is not accessible then this indicates either a fault with it or, more likely, a communications fault between it and the LSP. This will have to be investigated and resolved first before the MG can re-register with the main CM.
+
+Extra notes:

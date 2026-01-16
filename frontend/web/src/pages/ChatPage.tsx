@@ -1,8 +1,18 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Loader2, Wrench } from 'lucide-react';
 import { chatApi } from '@/services/api';
 import { MarkdownContent } from '@/components/MarkdownContent';
+import { Artifact, parseArtifacts } from '@/components/Artifact';
 import type { Message, ToolCall } from '@/types';
+
+interface AlertAnalysisContext {
+  analysisId: string;
+  alertName: string;
+  severity: string;
+  customerName?: string;
+  message: string;
+  timestamp: string;
+}
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -10,7 +20,9 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(() => `session-${Date.now()}`);
   const [showToolCalls, setShowToolCalls] = useState(true);
+  const [pendingContext, setPendingContext] = useState<AlertAnalysisContext | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasProcessedContext = useRef(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -25,29 +37,56 @@ export default function ChatPage() {
     if (saved !== null) {
       setShowToolCalls(saved === 'true');
     }
+
+    // Listen for toggle events from Layout header
+    const handleToolCallsToggle = (e: CustomEvent) => {
+      setShowToolCalls(e.detail);
+    };
+    window.addEventListener('toolCallsToggle', handleToolCallsToggle as EventListener);
+    return () => window.removeEventListener('toolCallsToggle', handleToolCallsToggle as EventListener);
   }, []);
 
-  const handleToggleToolCalls = () => {
-    setShowToolCalls((prev) => {
-      const next = !prev;
-      localStorage.setItem('showToolCalls', String(next));
-      return next;
-    });
-  };
+  // Check for alert analysis context from MonitoringPage
+  useEffect(() => {
+    if (hasProcessedContext.current) return;
+    
+    const contextStr = sessionStorage.getItem('alertAnalysisContext');
+    if (contextStr) {
+      try {
+        const context: AlertAnalysisContext = JSON.parse(contextStr);
+        // Clear it immediately to prevent re-processing
+        sessionStorage.removeItem('alertAnalysisContext');
+        hasProcessedContext.current = true;
+        
+        // Set the context to trigger auto-send
+        setPendingContext(context);
+      } catch (e) {
+        console.error('Failed to parse alert context:', e);
+        sessionStorage.removeItem('alertAnalysisContext');
+      }
+    }
+  }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
+  // Auto-send message when context is set
+  useEffect(() => {
+    if (pendingContext && !isLoading && messages.length === 0) {
+      // Trigger send with the context message
+      sendMessage(pendingContext.message);
+      setPendingContext(null);
+    }
+  }, [pendingContext, isLoading, messages.length]);
+
+  const sendMessage = useCallback(async (messageText: string) => {
+    if (!messageText.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: messageText,
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    const messageText = input;
     setInput('');
     setIsLoading(true);
 
@@ -152,6 +191,12 @@ export default function ChatPage() {
     } finally {
       setIsLoading(false);
     }
+  }, [isLoading, sessionId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+    await sendMessage(input);
   };
 
   const handleSuggestionClick = (suggestion: string) => {
@@ -160,31 +205,6 @@ export default function ChatPage() {
 
   return (
     <div className="h-[calc(100vh-12rem)] flex flex-col">
-      <div className="sticky top-0 z-10 bg-gray-900/80 backdrop-blur border-b border-gray-800 px-2 py-2">
-        <div className="flex items-center justify-end text-xs text-gray-400">
-          <button
-            type="button"
-            onClick={handleToggleToolCalls}
-            className="flex items-center gap-2 hover:text-gray-200 transition-colors"
-          >
-            <span className="uppercase tracking-wide">Tool calls</span>
-            <span className="text-gray-300">
-              {showToolCalls ? 'On' : 'Off'}
-            </span>
-            <span
-              className={`h-4 w-8 rounded-full p-0.5 transition-colors ${
-                showToolCalls ? 'bg-orange-500' : 'bg-gray-700'
-              }`}
-            >
-              <span
-                className={`block h-3 w-3 rounded-full bg-white transition-transform ${
-                  showToolCalls ? 'translate-x-4' : 'translate-x-0'
-                }`}
-              />
-            </span>
-          </button>
-        </div>
-      </div>
       <div className="flex-1 overflow-y-auto space-y-4 pb-4 pt-2">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-center">
@@ -193,17 +213,17 @@ export default function ChatPage() {
               <p className="text-gray-400 mb-6">
                 Ask me anything about your monitoring dashboards, metrics, and logs.
               </p>
-              <div className="flex flex-wrap gap-2 justify-center">
+              <div className="flex flex-wrap gap-2 justify-center max-w-4xl">
                 {[
-                  'Show me all datasources',
-                  'What dashboards are available?',
-                  'Query error rate in the last hour',
-                  'Show recent logs from production',
+                  'Show me all active alerts in order of priority',
+                  'Show me recently resolved alerts that alerted the same time the previous day',
+                  'Show me all linux servers with swap higher than 70%',
+                  'Review API usage metrics for this Genesys Cloud monitoring instance, highlight anything of concern, look back over last 10 days',
                 ].map((suggestion) => (
                   <button
                     key={suggestion}
                     onClick={() => handleSuggestionClick(suggestion)}
-                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm transition-colors"
+                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm transition-colors text-left"
                   >
                     {suggestion}
                   </button>
@@ -220,14 +240,31 @@ export default function ChatPage() {
               <div
                 className={`max-w-3xl rounded-lg px-4 py-3 ${
                   message.role === 'user'
-                    ? 'bg-orange-500/20 text-white'
+                    ? 'bg-blue-600/20 text-white'
                     : 'bg-gray-800 text-gray-100'
                 }`}
               >
                 {message.role === 'user' ? (
                   <p className="whitespace-pre-wrap">{message.content}</p>
                 ) : (
-                  <MarkdownContent content={message.content} />
+                  <>
+                    {/* Parse artifacts and render separately */}
+                    {(() => {
+                      const { artifacts, remainingContent } = parseArtifacts(message.content);
+                      return (
+                        <>
+                          {remainingContent && <MarkdownContent content={remainingContent} />}
+                          {artifacts.map((artifact, idx) => (
+                            <Artifact 
+                              key={idx} 
+                              content={`\`\`\`artifact\n${JSON.stringify(artifact)}\n\`\`\``} 
+                              className="mt-3" 
+                            />
+                          ))}
+                        </>
+                      );
+                    })()}
+                  </>
                 )}
 
                 {/* Tool calls */}
@@ -295,7 +332,7 @@ export default function ChatPage() {
         {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
           <div className="flex justify-start">
             <div className="bg-gray-800 rounded-lg px-4 py-3">
-              <Loader2 className="w-5 h-5 animate-spin text-orange-400" />
+              <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
             </div>
           </div>
         )}
@@ -308,13 +345,13 @@ export default function ChatPage() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask about your monitoring metrics, dashboards, or logs..."
-          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500 transition-colors"
+          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
           disabled={isLoading}
         />
         <button
           type="submit"
           disabled={isLoading || !input.trim()}
-          className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg px-6 py-3 transition-colors flex items-center gap-2"
+          className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg px-6 py-3 transition-colors flex items-center gap-2"
         >
           <Send className="w-5 h-5" />
           <span>Send</span>

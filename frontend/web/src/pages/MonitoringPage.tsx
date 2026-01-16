@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -9,35 +10,70 @@ import {
   RefreshCw,
   CheckCircle2,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  Server,
+  Database,
+  MessageSquare
 } from 'lucide-react';
-import { monitoringApi, alertsApi, mcpApi } from '@/services/api';
+import { monitoringApi, alertsApi, mcpApi, nocMonitoringApi } from '@/services/api';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function MonitoringPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [selectedSeverity, setSelectedSeverity] = useState<string>('low');
   const [expandedAnalysisId, setExpandedAnalysisId] = useState<string | null>(null);
+  const [currentCustomer, setCurrentCustomer] = useState<string | null>(null);
 
-  // Fetch monitoring status
+  // Listen for customer switch events
+  useEffect(() => {
+    const handleCustomerSwitch = (event: CustomEvent) => {
+      setCurrentCustomer(event.detail.customer);
+      // Invalidate queries to refetch with new customer
+      queryClient.invalidateQueries({ queryKey: ['monitoring-status'] });
+      queryClient.invalidateQueries({ queryKey: ['monitoring-targets'] });
+      queryClient.invalidateQueries({ queryKey: ['monitoring-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-datasources'] });
+    };
+
+    window.addEventListener('customerSwitch', handleCustomerSwitch as EventListener);
+    return () => {
+      window.removeEventListener('customerSwitch', handleCustomerSwitch as EventListener);
+    };
+  }, [queryClient]);
+
+  // Fetch monitoring status (use new API if customer selected)
   const { data: status, isLoading: statusLoading } = useQuery({
-    queryKey: ['monitoring-status'],
-    queryFn: monitoringApi.getStatus,
-    refetchInterval: 5000, // Refresh every 5 seconds
+    queryKey: ['monitoring-status', currentCustomer],
+    queryFn: () => currentCustomer 
+      ? nocMonitoringApi.getStatus(currentCustomer)
+      : monitoringApi.getStatus(),
+    refetchInterval: 5000,
   });
 
-  // Fetch targets
+  // Fetch targets (use new API if customer selected)
   const { data: targets = [], isLoading: targetsLoading } = useQuery({
-    queryKey: ['monitoring-targets'],
-    queryFn: monitoringApi.getTargets,
-    refetchInterval: 10000, // Refresh every 10 seconds
+    queryKey: ['monitoring-targets', currentCustomer],
+    queryFn: () => currentCustomer
+      ? nocMonitoringApi.getTargets(currentCustomer)
+      : monitoringApi.getTargets(),
+    refetchInterval: 10000,
   });
 
-  // Fetch alerts
+  // Fetch alerts (use new API if customer selected)
   const { data: alerts = [], isLoading: alertsLoading } = useQuery({
-    queryKey: ['monitoring-alerts', selectedSeverity],
-    queryFn: () => monitoringApi.getAlerts({ min_severity: selectedSeverity }),
-    refetchInterval: 5000, // Refresh every 5 seconds
+    queryKey: ['monitoring-alerts', selectedSeverity, currentCustomer],
+    queryFn: () => currentCustomer
+      ? nocMonitoringApi.getAlerts({ customer_name: currentCustomer, min_severity: selectedSeverity })
+      : monitoringApi.getAlerts({ min_severity: selectedSeverity }),
+    refetchInterval: 5000,
+  });
+
+  // Fetch datasources for current customer
+  const { data: datasources = [], isLoading: datasourcesLoading } = useQuery({
+    queryKey: ['customer-datasources', currentCustomer],
+    queryFn: () => currentCustomer ? nocMonitoringApi.getDatasources(currentCustomer) : Promise.resolve([]),
+    enabled: !!currentCustomer,
   });
 
   const { data: mcpModeData, isLoading: mcpModeLoading } = useQuery({
@@ -51,7 +87,7 @@ export default function MonitoringPage() {
   const { data: analysesData, isLoading: analysesLoading } = useQuery({
     queryKey: ['alert-analyses'],
     queryFn: alertsApi.getAnalyses,
-    refetchInterval: 10000, // Refresh every 10 seconds
+    refetchInterval: 10000,
   });
 
   const analyses = analysesData?.analyses || [];
@@ -62,17 +98,21 @@ export default function MonitoringPage() {
     enabled: !!expandedAnalysisId,
   });
 
-  // Start monitoring mutation
+  // Start monitoring mutation (use new API if customer selected)
   const startMutation = useMutation({
-    mutationFn: monitoringApi.start,
+    mutationFn: () => currentCustomer 
+      ? nocMonitoringApi.startMonitoring(currentCustomer)
+      : monitoringApi.start(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['monitoring-status'] });
     },
   });
 
-  // Stop monitoring mutation
+  // Stop monitoring mutation (use new API if customer selected)
   const stopMutation = useMutation({
-    mutationFn: monitoringApi.stop,
+    mutationFn: () => currentCustomer
+      ? nocMonitoringApi.stopMonitoring(currentCustomer)
+      : monitoringApi.stop(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['monitoring-status'] });
     },
@@ -85,18 +125,32 @@ export default function MonitoringPage() {
     },
   });
 
-  // Enable/disable target mutations
+  // Enable/disable target mutations (use new API if customer selected)
   const enableMutation = useMutation({
-    mutationFn: (name: string) => monitoringApi.enableTarget(name),
+    mutationFn: (name: string) => currentCustomer
+      ? nocMonitoringApi.enableTarget(currentCustomer, name)
+      : monitoringApi.enableTarget(name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['monitoring-targets'] });
     },
   });
 
   const disableMutation = useMutation({
-    mutationFn: (name: string) => monitoringApi.disableTarget(name),
+    mutationFn: (name: string) => currentCustomer
+      ? nocMonitoringApi.disableTarget(currentCustomer, name)
+      : monitoringApi.disableTarget(name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['monitoring-targets'] });
+    },
+  });
+
+  // Discover datasources mutation
+  const discoverMutation = useMutation({
+    mutationFn: () => currentCustomer 
+      ? nocMonitoringApi.discoverDatasources(currentCustomer)
+      : Promise.reject('No customer selected'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer-datasources'] });
     },
   });
 
@@ -119,8 +173,90 @@ export default function MonitoringPage() {
     setExpandedAnalysisId((current) => (current === analysisId ? null : analysisId));
   };
 
+  const handleDiscussWithAgent = (analysis: typeof analysisDetail) => {
+    if (!analysis) return;
+    
+    // Build context message with alert analysis details
+    const contextMessage = `I would like some help investigating this alert:
+
+**Alert:** ${analysis.alert_name}
+**Severity:** ${analysis.severity}
+**Status:** ${analysis.status}
+${analysis.customer_name ? `**Customer:** ${analysis.customer_name}` : ''}
+
+**Current AI Analysis:**
+- **Root Cause Hypothesis:** ${analysis.investigation?.root_cause_hypothesis || 'Not available'}
+- **Impact Assessment:** ${analysis.investigation?.impact_assessment || 'Not available'}
+- **Recommended Actions:** ${analysis.investigation?.recommended_actions?.join(', ') || 'None'}
+- **Confidence:** ${((analysis.investigation?.confidence || 0) * 100).toFixed(0)}%
+
+${analysis.kb_matches?.length > 0 ? `**KB Matches:** ${analysis.kb_matches.map(m => m.title).join(', ')}` : ''}
+
+Please help me investigate this further. Can you:
+1. Query current metrics to see if the issue is still ongoing
+2. Check for any related alerts or anomalies
+3. Suggest additional troubleshooting steps`;
+
+    // Store context in sessionStorage for ChatPage to pick up
+    sessionStorage.setItem('alertAnalysisContext', JSON.stringify({
+      analysisId: analysis.id,
+      alertName: analysis.alert_name,
+      severity: analysis.severity,
+      customerName: analysis.customer_name,
+      message: contextMessage,
+      timestamp: new Date().toISOString()
+    }));
+
+    // Navigate to chat
+    navigate('/chat');
+  };
+
   return (
     <div className="space-y-6">
+      {/* Customer Context Banner */}
+      {currentCustomer && (
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Server className="w-5 h-5 text-blue-400" />
+            <div>
+              <span className="text-blue-400 font-medium">Customer:</span>
+              <span className="ml-2 text-white font-semibold">{currentCustomer}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            {datasources.length > 0 && (
+              <div className="flex items-center gap-2 text-sm text-gray-400">
+                <Database className="w-4 h-4" />
+                <span>{datasources.length} datasources</span>
+              </div>
+            )}
+            <button
+              onClick={() => discoverMutation.mutate()}
+              disabled={discoverMutation.isPending}
+              className="text-sm px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded transition-colors"
+            >
+              {discoverMutation.isPending ? 'Discovering...' : 'Discover Datasources'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Alert Analyses</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={() => queryClient.invalidateQueries()}
+            className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* TODO: Proactive Monitoring Controls - Hidden for v1 release */}
+      {/* MCP Commands toggle, Start/Stop Monitoring buttons, Status Cards */}
+      {false && (
+      <>
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Proactive Monitoring</h1>
         <div className="flex gap-2">
@@ -211,8 +347,12 @@ export default function MonitoringPage() {
           </div>
         </div>
       </div>
+      </>
+      )}
 
-      {/* Monitoring Targets */}
+      {/* TODO: Monitoring Targets - Hidden for v1 release, will revisit later */}
+      {/* Proactive monitoring targets configuration */}
+      {false && (
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         <h2 className="text-xl font-bold mb-4">Monitoring Targets</h2>
         {targetsLoading ? (
@@ -273,8 +413,11 @@ export default function MonitoringPage() {
           </div>
         )}
       </div>
+      )}
 
-      {/* Recent Proactive Engine Alerts */}
+      {/* TODO: Recent Proactive Engine Alerts - Hidden for v1 release, will revisit later */}
+      {/* Proactive anomaly detection alerts */}
+      {false && (
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold">Recent Proactive Engine Alerts</h2>
@@ -344,25 +487,17 @@ export default function MonitoringPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Alert Analyses */}
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">Alert Analyses</h2>
-          <button
-            onClick={() => queryClient.invalidateQueries({ queryKey: ['alert-analyses'] })}
-            className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition-colors flex items-center gap-2"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
-          </button>
-        </div>
         {analysesLoading ? (
           <div className="text-center text-gray-400 py-12">Loading analyses...</div>
         ) : analyses.length === 0 ? (
           <div className="text-center text-gray-400 py-12">
             <AlertCircle className="w-12 h-12 mx-auto mb-3 text-gray-600" />
             <p>No alert analyses yet.</p>
+            <p className="text-sm mt-2">Alerts received from AlertManager will be analyzed and shown here.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -447,6 +582,20 @@ export default function MonitoringPage() {
                             </ul>
                           </div>
                         )}
+                        
+                        {/* Discuss with Agent Button */}
+                        <div className="pt-3 border-t border-gray-700">
+                          <button
+                            onClick={() => handleDiscussWithAgent(analysisDetail)}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                            Discuss with Agent
+                          </button>
+                          <p className="text-xs text-gray-500 mt-2">
+                            Continue investigation with AI assistance
+                          </p>
+                        </div>
                       </>
                     )}
                   </div>

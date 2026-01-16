@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ChatPage from './pages/ChatPage';
 import MonitoringPage from './pages/MonitoringPage';
+import NocOverviewPage from './pages/NocOverviewPage';
 import Layout from './components/Layout';
 
 const queryClient = new QueryClient({
@@ -23,6 +24,7 @@ function App() {
             <Route path="/" element={<Navigate to="/chat" replace />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/monitoring" element={<MonitoringPage />} />
+            <Route path="/noc" element={<NocOverviewPage />} />
           </Routes>
         </Layout>
       </Router>

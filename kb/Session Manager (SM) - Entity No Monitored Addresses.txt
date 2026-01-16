@@ -1,0 +1,38 @@
+SM3 Alert RunBook – Session Manager (SM) - Entity No Monitored Addresses
+KB0011815  -  v7.0 (Latest Version)
+
+1 views
+
+
+SM3 Alert RunBook – Session Manager (SM) - Entity No Monitored Addresses
+
+Alert Name: Entity No Monitored Addresses
+
+Alert Expression: (sum((sm_entity_monitored_address_status{status!="UP"} unless on (monitored_ip) label_replace(acm_survivable_processor_info{type="acm"} * on (number,fqdn) group_left(ip_address) acm_survivable_processor_active == 0,"monitored_ip","$1","exported_ip_address","(.*)")) * on (fqdn,id) group_left (name) sm_entity_info) by (id,name) / sum by(id, name) (sm_entity_monitored_address_status * on(fqdn, id) group_left(name) sm_entity_info)) == 1
+
+Category: Avaya Enterprise (Convergence)
+
+Description: This alert indicates that the named entity has no UP monitored addresses on any SM for over 5 minutes.
+
+Possible Cause(s):
+
+Service issue with the named entity.
+Communication issue between the named entity and the named Session Manager servers.
+Impact:  
+
+No sessions / calls between named entity and the Session Manager.
+Next Steps:
+
+Log onto the System Manager and check the Session Manager dashboard. 'Entity Monitoring' will show if link is still down and the time it went down.
+Check any alarms in System Manager.
+Log onto the named entity and check for issues.
+Log onto a Session Manager server and see if it can ping the named entity's IP address.
+Run traceSM on the Session Manager server and check for messages between the SM and the named entity.
+Extra notes:
+
+ 
+
+
+
+Revised by Jack Rogan
+Last modified 5 months ago

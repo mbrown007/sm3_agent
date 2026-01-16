@@ -1,0 +1,38 @@
+SM3 Alerts RunBook - Blackbox - SSH Probe Failing
+KB0011784  -  v3.0 (Latest Version)
+
+1 views
+
+
+SM3 Alert RunBook – Blackbox - SSH Probe Failing
+
+Alert Name: SSH Probe Failing
+
+Alert Expression: probe_success{module="ssh_banner"} == 0
+
+Category: Monitoring
+
+Description: This alert indicates that an SSH probe initiated by Prometheus' Blackbox Exporter to a target has failed 
+
+Possible Cause(s):
+
+SSH service on the target host is down or unresponsive
+Network issues between the Blackbox Exporter and the target
+SSH traffic is being filtered or blocked by the target, firewalls or other network devices
+Misconfiguration of the Blackbox Exporter in the SM3 configuration
+Impact: The target host may have SSH service disruptions, leading to potential administrative access issues or other operational challenges
+
+Next Steps:
+
+If the alert is still firing, check connectivity between SM3 and the target exporter by running nmap -Pn -pT:<port> <ipaddress_of_target>. If this returns filtered then depending on the system i.e. SMGR this could mean that your account is only locked out and would not require any customer intervention. If your return is closed, then this is likely that your port is being blocked by a firewall. If this returns an output of open, then check the SM3 blackbox configuration is setup correctly.
+If the alert is no longer firing, ensure you can connect to the target system and that the port is up. If so, then there may have been a small transient network error between SM3 and the target system. It is important to check this thoroughly and perhaps check with the customer if they where aware of any issues.
+You can check the alerts overview dashboard on their SM3 server to view the timeframes of these issues exactly.
+Extra notes:
+
+It is important to note that for SM3 the port that is used most when connecting directly from the SM3 server is TCP 22, you should always check the connectivity between SM3 and the target system on TCP 22 if the alert indicates as such.
+ 
+
+
+
+Revised by Jack Rogan
+Last modified 17-05-2024 12:01:12

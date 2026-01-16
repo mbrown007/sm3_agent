@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  mcp-grafana:
+    build:
+      context: ../mcps/mcp-grafana
+      dockerfile: Dockerfile
+    container_name: mcp-grafana-test
+    ports:
+      - "8001:8000"
+    environment:
+      # External Grafana instance
+      GRAFANA_URL: ${GRAFANA_URL:-https://maas-1203.mon.sabio.cloud}
+      GRAFANA_SERVICE_ACCOUNT_TOKEN: ${GRAFANA_SERVICE_ACCOUNT_TOKEN}
+    # Override default entrypoint to use SSE mode for easy testing
+    # The default is already SSE mode on port 8000, so we don't need to override
+    restart: unless-stopped
+    networks:
+      - mcp-network
+
+networks:
+  mcp-network:
+    driver: bridge

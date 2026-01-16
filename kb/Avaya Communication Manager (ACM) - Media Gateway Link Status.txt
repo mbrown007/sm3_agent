@@ -1,0 +1,60 @@
+SM3 Alerts RunBook - Avaya Communication Manager (ACM) - Media Gateway Link Status
+KB0011835  -  v3.0 (Latest Version)
+
+1 views
+
+
+SM3 Alert RunBook – Avaya Communication Manager (ACM) - Media Gateway Link Status
+
+Alert Name: Media Gateway Link Status
+
+Alert Expression: (acm_media_gateway_link_status{type="acm",state!="up"} * on (fqdn,number) group_left(name,network_region) (acm_media_gateway_info)) == 1
+
+Category: Avaya Enterprise (Convergence)
+
+Description: The H.248 link between the media gateway and Communication Manager has dropped.
+
+Possible Cause(s):
+
+Communication / network issue between CM and the media gateway.
+System has gone into survivable mode.
+Fault with the media gateway.
+Impact: 
+
+System could be in survivable mode meaning that the survivable server(s) could be controlling some or all of the call processing.
+
+DSP capacity could be reduced.
+
+Announcements could be affected.
+
+Depending on the cards installed in the gateway (e.g. analogue cards) then certain call types / functionality may be unavailable.
+
+ 
+
+ 
+
+ 
+
+Next Steps:
+
+Log onto CM and run the command -  list media-gateway - check to see if the 'Reg' column says 'y' or 'n' - if this is no then the gateway is not registered to CM.
+
+Run the command - status media-gateway - check the output of the link ('Lk') column - this should be 'up' if the link is active.
+
+Run the command - list survivable and see if any survivable servers are showing as 'Registered' = no / Active = yes - if so then the system is in ESS / LSP mode.
+
+See if the media gateway can be pinged from the CM server.
+
+See is the media gateway can be logged onto and run the commands 'show faults' to see if any faults are active.
+
+ 
+
+Extra notes:
+
+ 
+
+
+
+Revised by Jack Rogan
+Last modified 5 months ago
+

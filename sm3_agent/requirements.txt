@@ -11,3 +11,5 @@ httpx
 python-dotenv
 numpy
 prometheus-client
+docker>=7.0.0
+aiohttp>=3.9.0

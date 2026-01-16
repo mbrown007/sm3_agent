@@ -1,15 +1,117 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { MessageSquare, Activity, Github } from 'lucide-react';
+import { MessageSquare, Activity, Github, Server, ChevronDown, Check, Loader2, AlertCircle, Database, Phone, Monitor } from 'lucide-react';
+import { customersApi, grafanaServersApi } from '@/services/api';
+import type { CustomerInfo, SwitchServerResponse } from '@/types';
 
 interface LayoutProps {
   children: ReactNode;
 }
 
+// MCP type icons and colors
+const mcpTypeConfig: Record<string, { icon: typeof Server; color: string; label: string }> = {
+  grafana: { icon: Activity, color: 'text-orange-400', label: 'Grafana' },
+  alertmanager: { icon: AlertCircle, color: 'text-red-400', label: 'Alerts' },
+  genesys: { icon: Phone, color: 'text-blue-400', label: 'Genesys' },
+};
+
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
+  const [customers, setCustomers] = useState<CustomerInfo[]>([]);
+  const [currentCustomer, setCurrentCustomer] = useState<string | null>(null);
+  const [connectedMcps, setConnectedMcps] = useState<string[]>([]);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
+  const [switchProgress, setSwitchProgress] = useState<string>('');
+  const [showToolCalls, setShowToolCalls] = useState(true);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('showToolCalls');
+    if (saved !== null) {
+      setShowToolCalls(saved === 'true');
+    }
+  }, []);
+
+  const handleToggleToolCalls = () => {
+    setShowToolCalls((prev) => {
+      const next = !prev;
+      localStorage.setItem('showToolCalls', String(next));
+      window.dispatchEvent(new CustomEvent('toolCallsToggle', { detail: next }));
+      return next;
+    });
+  };
 
   const isActive = (path: string) => location.pathname === path;
+
+  useEffect(() => {
+    loadCustomers();
+  }, []);
+
+  const loadCustomers = async () => {
+    try {
+      setIsLoading(true);
+      // Try new customers API first, fall back to legacy grafana-servers
+      try {
+        const response = await customersApi.list();
+        setCustomers(response.customers);
+        setCurrentCustomer(response.current || response.default || null);
+      } catch {
+        // Fall back to legacy API
+        const response = await grafanaServersApi.list();
+        setCustomers(response.servers.map(s => ({
+          name: s.name,
+          description: s.description,
+          host: s.description,
+          mcp_servers: [{ type: 'grafana', url: s.url }]
+        })));
+        setCurrentCustomer(response.current || response.default || null);
+      }
+    } catch (error) {
+      console.error('Failed to load customers:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCustomerSwitch = async (customerName: string) => {
+    if (customerName === currentCustomer || isSwitching) return;
+    
+    try {
+      setIsSwitching(true);
+      setSwitchProgress('Starting containers...');
+      setIsDropdownOpen(false);
+      
+      const response = await customersApi.switch(customerName);
+      
+      if (response.success) {
+        setCurrentCustomer(customerName);
+        setConnectedMcps(response.connected_mcps || []);
+        setSwitchProgress('');
+        
+        // Dispatch event for other components to know customer changed
+        window.dispatchEvent(new CustomEvent('customerSwitch', { 
+          detail: { 
+            customer: customerName, 
+            connectedMcps: response.connected_mcps,
+            toolCount: response.tool_count 
+          } 
+        }));
+      } else {
+        console.error('Failed to switch customer:', response.message);
+        setSwitchProgress(`Error: ${response.message}`);
+        setTimeout(() => setSwitchProgress(''), 3000);
+      }
+    } catch (error) {
+      console.error('Error switching customer:', error);
+      setSwitchProgress('Connection failed');
+      setTimeout(() => setSwitchProgress(''), 3000);
+    } finally {
+      setIsSwitching(false);
+    }
+  };
+
+  const currentCustomerInfo = customers.find(c => c.name === currentCustomer);
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
@@ -17,11 +119,9 @@ export default function Layout({ children }: LayoutProps) {
       <header className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-8">
-            <Link to="/" className="flex items-center gap-2 text-xl font-bold">
-              <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
-                <span className="text-white text-sm font-bold">S</span>
-              </div>
-              <span>Sabio Monitoring Agent</span>
+            <Link to="/" className="flex items-center gap-3 text-xl font-bold">
+              <img src="/sabio.svg" alt="Sabio" className="h-8 w-auto" />
+              <span>Monitoring Agent</span>
             </Link>
 
             <nav className="flex gap-1">
@@ -29,7 +129,7 @@ export default function Layout({ children }: LayoutProps) {
                 to="/chat"
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                   isActive('/chat')
-                    ? 'bg-orange-500/20 text-orange-400'
+                    ? 'bg-blue-600/20 text-blue-400'
                     : 'text-gray-400 hover:text-white hover:bg-gray-800'
                 }`}
               >
@@ -38,10 +138,22 @@ export default function Layout({ children }: LayoutProps) {
               </Link>
 
               <Link
+                to="/noc"
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                  isActive('/noc')
+                    ? 'bg-blue-600/20 text-blue-400'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+              >
+                <Monitor className="w-4 h-4" />
+                <span>NOC</span>
+              </Link>
+
+              <Link
                 to="/monitoring"
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                   isActive('/monitoring')
-                    ? 'bg-orange-500/20 text-orange-400'
+                    ? 'bg-blue-600/20 text-blue-400'
                     : 'text-gray-400 hover:text-white hover:bg-gray-800'
                 }`}
               >
@@ -51,14 +163,133 @@ export default function Layout({ children }: LayoutProps) {
             </nav>
           </div>
 
-          <a
-            href="https://github.com/grafana/mcp-grafana"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            <Github className="w-5 h-5" />
-          </a>
+          <div className="flex items-center gap-4">
+            {/* Tool Calls Toggle */}
+            <button
+              type="button"
+              onClick={handleToggleToolCalls}
+              className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+            >
+              <span className="uppercase tracking-wide">Tool calls</span>
+              <span className="text-gray-300">{showToolCalls ? 'On' : 'Off'}</span>
+              <span
+                className={`h-4 w-8 rounded-full p-0.5 transition-colors ${showToolCalls ? 'bg-blue-600' : 'bg-gray-700'}`}
+              >
+                <span
+                  className={`block h-3 w-3 rounded-full bg-white transition-transform ${showToolCalls ? 'translate-x-4' : 'translate-x-0'}`}
+                />
+              </span>
+            </button>
+
+            {/* Customer Selector Dropdown */}
+            {customers.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  disabled={isLoading || isSwitching}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors text-sm border border-gray-700"
+                >
+                  {isSwitching ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-orange-400" />
+                  ) : (
+                    <Server className="w-4 h-4 text-orange-400" />
+                  )}
+                  <span className="max-w-[150px] truncate">
+                    {currentCustomerInfo?.name || 'Select Customer'}
+                  </span>
+                  {/* Connected MCP indicators */}
+                  {connectedMcps.length > 0 && !isSwitching && (
+                    <div className="flex gap-1 ml-1">
+                      {connectedMcps.map(mcp => {
+                        const config = mcpTypeConfig[mcp];
+                        if (!config) return null;
+                        const Icon = config.icon;
+                        return (
+                          <Icon 
+                            key={mcp} 
+                            className={`w-3 h-3 ${config.color}`} 
+                            title={config.label}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                  <ChevronDown className={`w-4 h-4 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Switch progress indicator */}
+                {switchProgress && (
+                  <div className="absolute right-0 mt-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400">
+                    {switchProgress}
+                  </div>
+                )}
+
+                {isDropdownOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-10" 
+                      onClick={() => setIsDropdownOpen(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-80 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 py-1 max-h-96 overflow-y-auto">
+                      <div className="px-3 py-2 text-xs text-gray-500 uppercase tracking-wider border-b border-gray-700">
+                        Customers
+                      </div>
+                      {customers.map((customer) => (
+                        <button
+                          key={customer.name}
+                          onClick={() => handleCustomerSwitch(customer.name)}
+                          disabled={isSwitching}
+                          className={`w-full px-3 py-2 text-left hover:bg-gray-700 transition-colors flex items-start gap-3 ${
+                            customer.name === currentCustomer ? 'bg-gray-700/50' : ''
+                          }`}
+                        >
+                          <div className="flex-shrink-0 mt-0.5">
+                            {customer.name === currentCustomer ? (
+                              <Check className="w-4 h-4 text-green-400" />
+                            ) : (
+                              <div className="w-4 h-4" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-sm truncate">{customer.name}</span>
+                              {/* MCP type badges */}
+                              <div className="flex gap-1">
+                                {customer.mcp_servers.map(server => {
+                                  const config = mcpTypeConfig[server.type];
+                                  if (!config) return null;
+                                  const Icon = config.icon;
+                                  return (
+                                    <Icon 
+                                      key={server.type} 
+                                      className={`w-3 h-3 ${config.color} opacity-60`} 
+                                      title={config.label}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            {customer.description && (
+                              <div className="text-xs text-gray-500 truncate">{customer.description}</div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            <a
+              href="https://github.com/grafana/mcp-grafana"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              <Github className="w-5 h-5" />
+            </a>
+          </div>
         </div>
       </header>
 
@@ -70,7 +301,7 @@ export default function Layout({ children }: LayoutProps) {
       {/* Footer */}
       <footer className="border-t border-gray-800 mt-12">
         <div className="container mx-auto px-4 py-6 text-center text-gray-500 text-sm">
-          <p>Sabio Monitoring Agent v0.2.0 - Powered by SM3</p>
+          <p>Monitoring Agent v0.2.0 - Powered by Sabio</p>
         </div>
       </footer>
     </div>

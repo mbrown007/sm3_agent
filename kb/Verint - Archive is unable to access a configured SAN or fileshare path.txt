@@ -1,0 +1,29 @@
+SM3 Alert RunBook – Verint - Archive is unable to access a configured SAN or fileshare path
+KB0011730  -  v4.0 (Latest Version)
+
+1 views
+
+
+SM3 Alert RunBook – Verint - Archive is unable to access a configured SAN or fileshare path
+
+Alert Name: Archive is unable to access a configured SAN or fileshare path
+
+Alert Expression: round(increase(verint_alarms_archive_fileshare_connect_error_total{sev="WARNING"}[5m])) > 0
+
+Category: Verint
+
+Description: Triggers if there is an issue accessing SAN or fileshare paths, as shown by the rise in ArchiveFileshareConnectError alarms for the host over the last 5 minutes.
+
+Possible Cause(s):
+
+Network configuration issues
+SAN or NAS accessibility problems
+Permission or credential issues
+Impact:
+
+Next Steps:
+
+Extra Notes:
+
+Revised by Jack Rogan
+Last modified 3 months ago

@@ -1,10 +1,10 @@
 version: '3.8'
 
 services:
-  # Grafana MCP Server (Official Image)
+  # Grafana MCP Server (build from local clone)
   mcp-server:
     build:
-      context: ./mcp-grafana
+      context: ../mcps/mcp-grafana
       dockerfile: Dockerfile
     image: mcp-grafana:local
     container_name: grafana-mcp-server

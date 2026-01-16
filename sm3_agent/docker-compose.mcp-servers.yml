@@ -1,0 +1,355 @@
+# Docker Compose for multiple MCP servers (Grafana + AlertManager)
+# Each customer has both Grafana MCP and AlertManager MCP services
+#
+# SETUP:
+# 1. Copy this file or include it with: docker-compose -f docker-compose.mcp-servers.yml up -d
+# 2. Create a .env file with the API keys for each customer (see .env.mcp-servers.example)
+# 3. Grafana MCP servers run on ports 3001, 3101-3113
+# 4. AlertManager MCP servers run on ports 9101, 9201-9213
+#
+# PORT SCHEME:
+#   Grafana:      3001 (local), 3101-3113 (customers)
+#   AlertManager: 9101 (local), 9201-9213 (customers)
+
+services:
+  # ===========================================================================
+  # LOCAL DEVELOPMENT
+  # ===========================================================================
+  
+  # Local Grafana MCP
+  mcp-grafana-local:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-local
+    ports:
+      - "3001:8080"
+    environment:
+      - GRAFANA_URL=${GRAFANA_URL_LOCAL:-http://host.docker.internal:3000}
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_LOCAL}
+    restart: unless-stopped
+    profiles:
+      - local
+  
+  # Local AlertManager MCP
+  mcp-alertmanager-local:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-local
+    ports:
+      - "9101:8080"
+    environment:
+      - ALERTMANAGER_URL=${ALERTMANAGER_URL_LOCAL:-http://host.docker.internal:9093}
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+    profiles:
+      - local
+
+  # ===========================================================================
+  # VATTENFALL DE - maas-1203.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-vattenfallde:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-vattenfallde
+    ports:
+      - "3101:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1203.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_VATTENFALLDE}
+    restart: unless-stopped
+
+  mcp-alertmanager-vattenfallde:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-vattenfallde
+    ports:
+      - "9201:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1203.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+  # ===========================================================================
+  # SEGURCAIXA - maas-1171.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-segurcaixa:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-segurcaixa
+    ports:
+      - "3102:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1171.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_SEGURCAIXA}
+    restart: unless-stopped
+
+  mcp-alertmanager-segurcaixa:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-segurcaixa
+    ports:
+      - "9202:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1171.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+  # ===========================================================================
+  # ACOLAD - maas-1206.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-acolad:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-acolad
+    ports:
+      - "3103:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1206.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_ACOLAD}
+    restart: unless-stopped
+
+  mcp-alertmanager-acolad:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-acolad
+    ports:
+      - "9203:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1206.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+  # ===========================================================================
+  # [OD] ATLANTA - maas-1186.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-atlanta:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-atlanta
+    ports:
+      - "3104:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1186.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_ATLANTA}
+    restart: unless-stopped
+
+  mcp-alertmanager-atlanta:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-atlanta
+    ports:
+      - "9204:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1186.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+  # ===========================================================================
+  # [OD] ATOS BPS - maas-1195.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-atos:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-atos
+    ports:
+      - "3105:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1195.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_ATOS}
+    restart: unless-stopped
+
+  mcp-alertmanager-atos:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-atos
+    ports:
+      - "9205:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1195.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+  # ===========================================================================
+  # [OD] DX - maas-1138.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-dx:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-dx
+    ports:
+      - "3106:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1138.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_DX}
+    restart: unless-stopped
+
+  mcp-alertmanager-dx:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-dx
+    ports:
+      - "9206:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1138.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+  # ===========================================================================
+  # [OD] LEEDS BUILDING SOCIETY - maas-1115.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-leeds:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-leeds
+    ports:
+      - "3107:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1115.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_LEEDS}
+    restart: unless-stopped
+
+  mcp-alertmanager-leeds:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-leeds
+    ports:
+      - "9207:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1115.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+  # ===========================================================================
+  # [OD] NEWDAY PROD - maas-1139.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-newday:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-newday
+    ports:
+      - "3108:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1139.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_NEWDAY}
+    restart: unless-stopped
+
+  mcp-alertmanager-newday:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-newday
+    ports:
+      - "9208:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1139.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+  # ===========================================================================
+  # [OD] REED AND MACKAY - maas-1174.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-reed:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-reed
+    ports:
+      - "3109:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1174.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_REED}
+    restart: unless-stopped
+
+  mcp-alertmanager-reed:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-reed
+    ports:
+      - "9209:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1174.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+  # ===========================================================================
+  # [OD] ROYAL LONDON - maas-1187.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-royallondon:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-royallondon
+    ports:
+      - "3110:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1187.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_ROYALLONDON}
+    restart: unless-stopped
+
+  mcp-alertmanager-royallondon:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-royallondon
+    ports:
+      - "9210:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1187.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+  # ===========================================================================
+  # [OD] TRANSCOM NORTH - maas-1110.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-transcom-north:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-transcom-north
+    ports:
+      - "3111:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1110.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_TRANSCOM_NORTH}
+    restart: unless-stopped
+
+  mcp-alertmanager-transcom-north:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-transcom-north
+    ports:
+      - "9211:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1110.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+  # ===========================================================================
+  # [OD] TRANSCOM SOUTH - maas-1112.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-transcom-south:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-transcom-south
+    ports:
+      - "3112:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1112.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_TRANSCOM_SOUTH}
+    restart: unless-stopped
+
+  mcp-alertmanager-transcom-south:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-transcom-south
+    ports:
+      - "9212:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1112.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+  # ===========================================================================
+  # [OD] VOLKSBANK - maas-1206.mon.sabio.cloud
+  # ===========================================================================
+  
+  mcp-grafana-volksbank:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana-volksbank
+    ports:
+      - "3113:8080"
+    environment:
+      - GRAFANA_URL=https://maas-1206.mon.sabio.cloud
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY_VOLKSBANK}
+    restart: unless-stopped
+
+  mcp-alertmanager-volksbank:
+    build: ../alertmanager-mcp
+    container_name: mcp-alertmanager-volksbank
+    ports:
+      - "9213:8080"
+    environment:
+      - ALERTMANAGER_URL=https://maas-1206.mon.sabio.cloud:9093
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped

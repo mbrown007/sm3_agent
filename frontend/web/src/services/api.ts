@@ -8,7 +8,16 @@ import type {
   MonitoringTarget,
   MonitoringStatus,
   CacheStats,
-  StreamChunk
+  StreamChunk,
+  GrafanaServersResponse,
+  SwitchServerResponse,
+  CustomerContainersHealth,
+  CustomersResponse,
+  NOCOverview,
+  CustomerHealth,
+  Datasource,
+  CustomerMonitoringTarget,
+  CustomerAlert
 } from '@/types';
 
 const api = axios.create({
@@ -136,6 +145,11 @@ export const alertsApi = {
     const response = await api.get<AlertAnalysisDetail>(`/api/alerts/analyses/${analysisId}`);
     return response.data;
   },
+
+  getWebhookStatuses: async (): Promise<WebhookStatusResponse> => {
+    const response = await api.get<WebhookStatusResponse>('/api/alerts/webhook-status');
+    return response.data;
+  },
 };
 
 // Cache API
@@ -168,6 +182,135 @@ export const mcpApi = {
 export const healthApi = {
   check: async (): Promise<{ status: string; service: string }> => {
     const response = await api.get('/health');
+    return response.data;
+  },
+};
+
+// Grafana Servers API (backwards compatibility)
+export const grafanaServersApi = {
+  list: async (): Promise<GrafanaServersResponse> => {
+    const response = await api.get<GrafanaServersResponse>('/api/grafana-servers');
+    return response.data;
+  },
+
+  switch: async (serverName: string): Promise<SwitchServerResponse> => {
+    const response = await api.post<SwitchServerResponse>('/api/grafana-servers/switch', {
+      server_name: serverName,
+    });
+    return response.data;
+  },
+};
+
+// Customers API (new multi-MCP format)
+export const customersApi = {
+  list: async (): Promise<CustomersResponse> => {
+    const response = await api.get<CustomersResponse>('/api/customers');
+    return response.data;
+  },
+
+  switch: async (customerName: string): Promise<SwitchServerResponse> => {
+    const response = await api.post<SwitchServerResponse>('/api/customers/switch', {
+      customer_name: customerName,
+    });
+    return response.data;
+  },
+
+  getContainerHealth: async (customerName: string): Promise<CustomerContainersHealth> => {
+    const response = await api.get<CustomerContainersHealth>(`/api/containers/health/${customerName}`);
+    return response.data;
+  },
+};
+
+// Containers API
+export const containersApi = {
+  getActiveCustomers: async (): Promise<{ active_customers: string[]; max_warm: number; count: number }> => {
+    const response = await api.get('/api/containers/active');
+    return response.data;
+  },
+
+  cleanup: async (): Promise<{ success: boolean; removed_count: number; message?: string }> => {
+    const response = await api.post('/api/containers/cleanup');
+    return response.data;
+  },
+};
+
+// NOC Monitoring API (v2 - multi-customer)
+export const nocMonitoringApi = {
+  // NOC Overview
+  getNocOverview: async (): Promise<NOCOverview> => {
+    const response = await api.get<NOCOverview>('/monitoring/noc');
+    return response.data;
+  },
+
+  // Customer-specific status
+  getStatus: async (customerName?: string): Promise<MonitoringStatus> => {
+    const params = customerName ? { customer_name: customerName } : {};
+    const response = await api.get<MonitoringStatus>('/monitoring/status', { params });
+    return response.data;
+  },
+
+  // Start/Stop monitoring for a customer
+  startMonitoring: async (customerName: string): Promise<{ status: string; customer: string }> => {
+    const response = await api.post(`/monitoring/start/${customerName}`);
+    return response.data;
+  },
+
+  stopMonitoring: async (customerName: string): Promise<{ status: string; customer: string }> => {
+    const response = await api.post(`/monitoring/stop/${customerName}`);
+    return response.data;
+  },
+
+  // Datasource discovery
+  getDatasources: async (customerName: string): Promise<Datasource[]> => {
+    const response = await api.get<Datasource[]>(`/monitoring/datasources/${customerName}`);
+    return response.data;
+  },
+
+  discoverDatasources: async (customerName: string): Promise<{ status: string; count: number; datasources: Array<{ uid: string; name: string; type: string }> }> => {
+    const response = await api.post(`/monitoring/datasources/${customerName}/discover`);
+    return response.data;
+  },
+
+  // Customer-specific targets
+  getTargets: async (customerName?: string): Promise<CustomerMonitoringTarget[]> => {
+    const params = customerName ? { customer_name: customerName } : {};
+    const response = await api.get<CustomerMonitoringTarget[]>('/monitoring/targets', { params });
+    return response.data;
+  },
+
+  createTarget: async (customerName: string, target: Omit<MonitoringTarget, 'last_check' | 'next_check'>): Promise<CustomerMonitoringTarget> => {
+    const response = await api.post<CustomerMonitoringTarget>(`/monitoring/targets/${customerName}`, target);
+    return response.data;
+  },
+
+  createDefaultTargets: async (customerName: string, prometheusUid?: string): Promise<{ status: string; customer: string; datasource_uid: string; created_targets: string[] }> => {
+    const params = prometheusUid ? { prometheus_uid: prometheusUid } : {};
+    const response = await api.post(`/monitoring/targets/${customerName}/defaults`, null, { params });
+    return response.data;
+  },
+
+  deleteTarget: async (customerName: string, targetName: string): Promise<void> => {
+    await api.delete(`/monitoring/targets/${customerName}/${targetName}`);
+  },
+
+  enableTarget: async (customerName: string, targetName: string): Promise<{ status: string }> => {
+    const response = await api.patch(`/monitoring/targets/${customerName}/${targetName}/enable`);
+    return response.data;
+  },
+
+  disableTarget: async (customerName: string, targetName: string): Promise<{ status: string }> => {
+    const response = await api.patch(`/monitoring/targets/${customerName}/${targetName}/disable`);
+    return response.data;
+  },
+
+  // Customer-specific alerts
+  getAlerts: async (params?: { customer_name?: string; minutes?: number; min_severity?: string; include_acknowledged?: boolean }): Promise<CustomerAlert[]> => {
+    const response = await api.get<CustomerAlert[]>('/monitoring/alerts', { params });
+    return response.data;
+  },
+
+  acknowledgeAlert: async (customerName: string, alertId: string, user?: string): Promise<{ status: string; alert_id: string }> => {
+    const response = await api.post(`/monitoring/alerts/${customerName}/${alertId}/acknowledge`, { user });
     return response.data;
   },
 };

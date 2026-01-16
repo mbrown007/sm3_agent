@@ -1,0 +1,31 @@
+{
+  "_comment": "Example Grafana MCP server configuration. Copy this to grafana_servers.json and customize.",
+  "servers": [
+    {
+      "name": "Local Dev",
+      "url": "http://localhost:3001/mcp",
+      "description": "Local development Grafana instance"
+    },
+    {
+      "name": "Customer A - Production",
+      "url": "https://grafana.customer-a.com/mcp",
+      "description": "Customer A production monitoring"
+    },
+    {
+      "name": "Customer A - Staging",
+      "url": "https://staging.grafana.customer-a.com/mcp",
+      "description": "Customer A staging environment"
+    },
+    {
+      "name": "Customer B - Production",
+      "url": "https://monitoring.customer-b.io/mcp",
+      "description": "Customer B main monitoring stack"
+    },
+    {
+      "name": "Internal Ops",
+      "url": "https://grafana.internal.company.com/mcp",
+      "description": "Internal operations monitoring"
+    }
+  ],
+  "default": "Local Dev"
+}

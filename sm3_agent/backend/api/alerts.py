@@ -2,15 +2,17 @@
 API endpoints for handling Grafana alert webhooks.
 
 Receives alerts from Grafana, investigates with AI, and creates ServiceNow tickets.
+Supports multi-customer webhooks with auto-starting MCP containers.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
@@ -18,6 +20,8 @@ from pydantic import BaseModel, Field
 
 from backend.agents.agent_manager import AgentManager
 from backend.app.config import get_settings
+from backend.app.mcp_servers import get_mcp_server_manager
+from backend.containers.manager import get_container_manager
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -26,6 +30,50 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 # Directory for mock ServiceNow tickets (local testing)
 TICKETS_DIR = Path("/tmp/servicenow_tickets")
 TICKETS_DIR.mkdir(exist_ok=True)
+
+# Customer webhook state tracking
+_customer_webhook_state: Dict[str, Dict[str, Any]] = {}
+
+# Notification callbacks for forwarding analyses (ServiceNow, Slack, etc.)
+_notification_callbacks: List[Callable[[str, Dict[str, Any]], None]] = []
+
+
+def register_notification_callback(callback: Callable[[str, Dict[str, Any]], None]) -> None:
+    """
+    Register a callback to be notified when an alert analysis is complete.
+    
+    Callback signature: callback(customer_name: str, analysis: dict)
+    Use this for ServiceNow, Slack, or other integrations.
+    """
+    _notification_callbacks.append(callback)
+
+
+def get_webhook_state(customer_name: str) -> Dict[str, Any]:
+    """Get webhook state for a customer."""
+    return _customer_webhook_state.get(customer_name, {
+        "last_alert_received": None,
+        "total_alerts_received": 0,
+        "pending_analyses": 0,
+        "completed_analyses": 0,
+        "last_analysis_completed": None,
+        "mcp_containers_ready": False,
+        "errors": []
+    })
+
+
+def _update_webhook_state(customer_name: str, **updates) -> None:
+    """Update webhook state for a customer."""
+    if customer_name not in _customer_webhook_state:
+        _customer_webhook_state[customer_name] = {
+            "last_alert_received": None,
+            "total_alerts_received": 0,
+            "pending_analyses": 0,
+            "completed_analyses": 0,
+            "last_analysis_completed": None,
+            "mcp_containers_ready": False,
+            "errors": []
+        }
+    _customer_webhook_state[customer_name].update(updates)
 
 
 @dataclass
@@ -56,9 +104,21 @@ def _get_kb_dir() -> Path:
     return kb_dir
 
 
-def _get_analysis_dir() -> Path:
+def _get_analysis_dir(customer_name: Optional[str] = None) -> Path:
+    """
+    Get analysis directory, optionally scoped to a customer.
+    
+    If customer_name is provided, returns customer-specific subdirectory.
+    """
     settings = get_settings()
-    analysis_dir = Path(settings.alert_analysis_dir)
+    base_dir = Path(settings.alert_analysis_dir)
+    
+    if customer_name:
+        # Customer-scoped directory
+        analysis_dir = base_dir / customer_name
+    else:
+        analysis_dir = base_dir
+    
     analysis_dir.mkdir(parents=True, exist_ok=True)
     return analysis_dir
 
@@ -459,6 +519,9 @@ async def alertmanager_ingest(
 ):
     """
     Receive alert webhook from Alertmanager and write analysis files.
+    
+    DEPRECATED: Use /ingest/{customer_name} for multi-customer support.
+    This endpoint processes alerts without customer context.
 
     Use ?sync=true to process in-request (slower but immediate output).
     """
@@ -495,6 +558,235 @@ async def alertmanager_ingest(
     }
 
 
+@router.post("/ingest/{customer_name}")
+async def alertmanager_ingest_customer(
+    customer_name: str,
+    payload: AlertmanagerWebhookPayload,
+    background_tasks: BackgroundTasks,
+    sync: bool = False
+):
+    """
+    Receive alert webhook from Alertmanager for a specific customer.
+    
+    This endpoint:
+    1. Auto-starts the customer's MCP containers if not running
+    2. Processes alerts with customer context
+    3. Uses customer's Grafana/AlertManager MCP for investigation
+    4. Stores analyses in customer-specific directory
+    5. Triggers notification callbacks (ServiceNow, Slack, etc.)
+
+    Configure AlertManager to send webhooks to:
+        http://<sm3-agent>/api/alerts/ingest/{customer_name}
+
+    Use ?sync=true to process in-request (slower but immediate output).
+    """
+    logger.info(f"Received Alertmanager webhook for {customer_name}: {payload.status}, {len(payload.alerts)} alert(s)")
+
+    # Validate customer exists
+    server_manager = get_mcp_server_manager()
+    customer = server_manager.get_customer(customer_name)
+    if not customer:
+        raise HTTPException(status_code=404, detail=f"Customer '{customer_name}' not found")
+
+    # Update webhook state
+    _update_webhook_state(
+        customer_name,
+        last_alert_received=datetime.utcnow().isoformat(),
+        total_alerts_received=get_webhook_state(customer_name).get("total_alerts_received", 0) + len(payload.alerts)
+    )
+
+    if payload.status != "firing":
+        logger.info(f"Ignoring {payload.status} alert for {customer_name}")
+        return {"status": "ignored", "reason": f"Alert status is {payload.status}"}
+
+    # Start MCP containers in background (don't block webhook response)
+    background_tasks.add_task(
+        _ensure_customer_containers,
+        customer_name=customer_name,
+        customer=customer
+    )
+
+    processed = []
+    pending_count = get_webhook_state(customer_name).get("pending_analyses", 0)
+    
+    for alert in payload.alerts:
+        analysis_id = _build_analysis_id(alert)
+        pending_count += 1
+        
+        if sync:
+            await process_alertmanager_alert_customer(
+                alert=alert,
+                analysis_id=analysis_id,
+                customer_name=customer_name,
+                customer=customer
+            )
+            status = "processed"
+            pending_count -= 1
+        else:
+            background_tasks.add_task(
+                process_alertmanager_alert_customer,
+                alert=alert,
+                analysis_id=analysis_id,
+                customer_name=customer_name,
+                customer=customer
+            )
+            status = "queued"
+
+        processed.append({
+            "analysis_id": analysis_id,
+            "customer": customer_name,
+            "fingerprint": alert.fingerprint,
+            "status": status
+        })
+
+    _update_webhook_state(customer_name, pending_analyses=pending_count)
+
+    return {
+        "status": "received",
+        "customer": customer_name,
+        "processed_count": len(processed),
+        "alerts": processed
+    }
+
+
+@router.get("/status/{customer_name}")
+async def get_customer_webhook_status(customer_name: str):
+    """
+    Get webhook and analysis status for a customer.
+    
+    Returns:
+    - last_alert_received: Timestamp of last alert
+    - total_alerts_received: Total count of alerts received
+    - pending_analyses: Number of analyses in progress
+    - completed_analyses: Number of completed analyses
+    - mcp_containers_ready: Whether MCP containers are running
+    - errors: Recent errors
+    """
+    # Validate customer exists
+    server_manager = get_mcp_server_manager()
+    customer = server_manager.get_customer(customer_name)
+    if not customer:
+        raise HTTPException(status_code=404, detail=f"Customer '{customer_name}' not found")
+
+    state = get_webhook_state(customer_name)
+    
+    # Check if containers are running
+    try:
+        container_manager = get_container_manager()
+        if container_manager and customer_name in container_manager._customers:
+            customer_containers = container_manager._customers[customer_name]
+            state["mcp_containers_ready"] = customer_containers.all_healthy()
+        else:
+            state["mcp_containers_ready"] = False
+    except Exception:
+        state["mcp_containers_ready"] = False
+
+    # Count analyses files for this customer
+    analysis_dir = _get_analysis_dir(customer_name)
+    if analysis_dir.exists():
+        state["analysis_files"] = len(list(analysis_dir.glob("*.json")))
+    else:
+        state["analysis_files"] = 0
+
+    return state
+
+
+@router.get("/webhook-status")
+async def get_all_webhook_statuses():
+    """
+    Get webhook status for all customers.
+    
+    Returns a list of customers with their webhook status,
+    useful for displaying connection health on dashboards.
+    """
+    server_manager = get_mcp_server_manager()
+    customers = server_manager.list_customers()
+    
+    statuses = []
+    for customer_info in customers:
+        customer_name = customer_info.get("name", "")
+        if not customer_name:
+            continue
+            
+        state = get_webhook_state(customer_name)
+        
+        # Check container health
+        try:
+            container_manager = get_container_manager()
+            if container_manager and customer_name in container_manager._customers:
+                customer_containers = container_manager._customers[customer_name]
+                state["mcp_containers_ready"] = customer_containers.all_healthy()
+        except Exception:
+            pass
+        
+        # Count analysis files
+        analysis_dir = _get_analysis_dir(customer_name)
+        if analysis_dir.exists():
+            state["analysis_files"] = len(list(analysis_dir.glob("*.json")))
+        else:
+            state["analysis_files"] = 0
+        
+        statuses.append({
+            "customer_name": customer_name,
+            "webhook_url": f"/api/alerts/ingest/{customer_name}",
+            **state
+        })
+    
+    return {
+        "customers": statuses,
+        "total_customers": len(statuses),
+        "customers_with_alerts": len([s for s in statuses if s.get("total_alerts_received", 0) > 0])
+    }
+
+
+async def _ensure_customer_containers(customer_name: str, customer: Any) -> bool:
+    """
+    Ensure customer MCP containers are running.
+    Called when an alert is received for a customer.
+    """
+    try:
+        container_manager = get_container_manager()
+        if not container_manager:
+            logger.warning(f"Container manager not available for {customer_name}")
+            _update_webhook_state(customer_name, mcp_containers_ready=False)
+            return False
+
+        # Get MCP server configs
+        mcp_servers = customer._raw_mcp_servers if hasattr(customer, '_raw_mcp_servers') else []
+        
+        if not mcp_servers:
+            logger.info(f"No MCP servers configured for {customer_name}")
+            _update_webhook_state(customer_name, mcp_containers_ready=False)
+            return False
+
+        # Start containers
+        logger.info(f"Ensuring MCP containers for {customer_name} (alert triggered)")
+        customer_containers = await container_manager.start_customer_containers(
+            customer_name=customer_name,
+            mcp_servers=mcp_servers,
+            wait_for_healthy=True
+        )
+        
+        is_healthy = customer_containers.all_healthy()
+        _update_webhook_state(customer_name, mcp_containers_ready=is_healthy)
+        
+        if is_healthy:
+            logger.info(f"MCP containers ready for {customer_name}")
+        else:
+            logger.warning(f"Some MCP containers unhealthy for {customer_name}")
+        
+        return is_healthy
+        
+    except Exception as e:
+        logger.error(f"Error starting containers for {customer_name}: {e}", exc_info=True)
+        _update_webhook_state(
+            customer_name,
+            mcp_containers_ready=False,
+            errors=get_webhook_state(customer_name).get("errors", [])[-9:] + [str(e)]
+        )
+        return False
+
+
 def _build_analysis_id(alert: AlertmanagerAlert) -> str:
     timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     fingerprint = alert.fingerprint or uuid4().hex[:8]
@@ -504,6 +796,8 @@ def _build_analysis_id(alert: AlertmanagerAlert) -> str:
 async def process_alertmanager_alert(alert: AlertmanagerAlert, analysis_id: str) -> None:
     """
     Process Alertmanager alert: match KB, investigate with AI, write analysis file.
+    
+    DEPRECATED: Use process_alertmanager_alert_customer for multi-customer support.
     """
     try:
         alert_name = alert.labels.get("alertname", "Unknown Alert")
@@ -552,16 +846,106 @@ async def process_alertmanager_alert(alert: AlertmanagerAlert, analysis_id: str)
         logger.error(f"Error processing Alertmanager alert {analysis_id}: {exc}", exc_info=True)
 
 
+async def process_alertmanager_alert_customer(
+    alert: AlertmanagerAlert,
+    analysis_id: str,
+    customer_name: str,
+    customer: Any
+) -> None:
+    """
+    Process Alertmanager alert for a specific customer.
+    
+    Uses customer's MCP servers for investigation and stores analysis per-customer.
+    Triggers notification callbacks on completion.
+    """
+    try:
+        alert_name = alert.labels.get("alertname", "Unknown Alert")
+        severity = str(alert.labels.get("severity", "info")).lower()
+        description = alert.annotations.get("description", "No description")
+        summary = alert.annotations.get("summary", alert_name)
+
+        logger.info(f"Processing alert for {customer_name}: {alert_name} ({severity})")
+
+        kb_entries = _load_kb_entries()
+        kb_matches = _match_kb_entries(
+            alert_name=alert_name,
+            labels=alert.labels,
+            annotations=alert.annotations,
+            entries=kb_entries
+        )
+        kb_context = _build_kb_context(kb_matches)
+
+        # Use customer-specific investigation
+        investigation_result = await investigate_alert_with_ai_customer(
+            alert_name=alert_name,
+            severity=severity,
+            description=description,
+            summary=summary,
+            metric_values={},
+            labels=alert.labels,
+            annotations=alert.annotations,
+            kb_context=kb_context,
+            customer_name=customer_name,
+            customer=customer
+        )
+
+        analysis_record = _build_analysis_record(
+            analysis_id=analysis_id,
+            alert=alert,
+            alert_name=alert_name,
+            severity=severity,
+            kb_matches=kb_matches,
+            investigation_result=investigation_result,
+            customer_name=customer_name
+        )
+
+        # Write to customer-specific directory
+        analysis_dir = _get_analysis_dir(customer_name)
+        analysis_file = analysis_dir / f"{analysis_id}.json"
+        analysis_file.write_text(
+            json.dumps(analysis_record, indent=2),
+            encoding="utf-8"
+        )
+
+        logger.info(f"Alert analysis written for {customer_name}: {analysis_file}")
+
+        # Update webhook state
+        state = get_webhook_state(customer_name)
+        _update_webhook_state(
+            customer_name,
+            pending_analyses=max(0, state.get("pending_analyses", 1) - 1),
+            completed_analyses=state.get("completed_analyses", 0) + 1,
+            last_analysis_completed=datetime.utcnow().isoformat()
+        )
+
+        # Trigger notification callbacks (ServiceNow, Slack, etc.)
+        for callback in _notification_callbacks:
+            try:
+                callback(customer_name, analysis_record)
+            except Exception as cb_err:
+                logger.error(f"Notification callback error: {cb_err}")
+
+    except Exception as exc:
+        logger.error(f"Error processing alert {analysis_id} for {customer_name}: {exc}", exc_info=True)
+        state = get_webhook_state(customer_name)
+        _update_webhook_state(
+            customer_name,
+            pending_analyses=max(0, state.get("pending_analyses", 1) - 1),
+            errors=state.get("errors", [])[-9:] + [f"{alert_name}: {str(exc)}"]
+        )
+
+
 def _build_analysis_record(
     analysis_id: str,
     alert: AlertmanagerAlert,
     alert_name: str,
     severity: str,
     kb_matches: List[Dict[str, Any]],
-    investigation_result: AlertInvestigationResult
+    investigation_result: AlertInvestigationResult,
+    customer_name: Optional[str] = None
 ) -> Dict[str, Any]:
     investigated_at = investigation_result.investigation.investigated_at.isoformat() + "Z"
-    return {
+    record = {
         "id": analysis_id,
         "source": "alertmanager",
         "status": alert.status,
@@ -591,6 +975,11 @@ def _build_analysis_record(
         },
         "raw_response": investigation_result.raw_response
     }
+    
+    if customer_name:
+        record["customer_name"] = customer_name
+    
+    return record
 
 async def process_alert(
     alert: GrafanaAlert,
@@ -749,6 +1138,140 @@ Focus on actionable insights for the on-call engineer.
             summary=summary,
             root_cause_hypothesis="AI investigation failed - manual investigation required",
             impact_assessment=f"Alert triggered: {description}",
+            recommended_actions=["Check Grafana dashboard", "Review recent deployments", "Check service logs"],
+            related_evidence=["AI investigation unavailable"],
+            confidence=0.0,
+            investigated_at=datetime.utcnow()
+        )
+        return AlertInvestigationResult(
+            investigation=investigation,
+            raw_response="AI investigation failed"
+        )
+
+
+async def investigate_alert_with_ai_customer(
+    alert_name: str,
+    severity: str,
+    description: str,
+    summary: str,
+    metric_values: Dict[str, float],
+    labels: Dict[str, Any],
+    annotations: Dict[str, Any],
+    customer_name: str,
+    customer: Any,
+    kb_context: Optional[str] = None
+) -> AlertInvestigationResult:
+    """
+    Use AI agent to investigate the alert using customer's MCP servers.
+    
+    This version switches to the customer's MCP servers before investigation,
+    allowing queries against the customer's specific Grafana/Prometheus/Loki.
+    """
+    logger.info(f"Starting AI investigation for {customer_name}: {alert_name}")
+
+    # Build investigation prompt
+    metrics_str = "\n".join([f"  - {k}: {v}" for k, v in metric_values.items()])
+    labels_str = "\n".join([f"  - {k}: {v}" for k, v in labels.items()])
+
+    knowledge_context = ""
+    if kb_context:
+        knowledge_context = f"""
+**Knowledge Base References:**
+{kb_context}
+"""
+
+    investigation_prompt = f"""
+An alert has fired for customer **{customer_name}** and requires investigation:
+
+**Alert Details:**
+- Name: {alert_name}
+- Severity: {severity.upper()}
+- Summary: {summary}
+- Description: {description}
+
+**Current Metric Values:**
+{metrics_str or "  No metric values provided"}
+
+**Labels:**
+{labels_str}
+{knowledge_context}
+
+**Your Task:**
+Please investigate this alert by:
+
+1. **Check Recent Trends**: Query relevant Prometheus metrics for the last hour to see if this is a spike or ongoing issue
+2. **Gather Context**: Check related metrics (CPU, memory, network, error rates) for the affected service/instance
+3. **Review Logs**: Query Loki for error logs around the alert time
+4. **Check Dashboards**: Look for relevant dashboards that show the service health
+5. **Correlate**: Are other instances/services affected?
+
+**Provide in your response:**
+- **Root Cause Hypothesis**: What likely caused this alert? (2-3 sentences)
+- **Impact Assessment**: What's affected and how severe? (2-3 sentences)
+- **Recommended Actions**: List 3-4 specific steps to resolve (bullet points)
+- **Evidence**: Cite specific metrics, log entries, or dashboard data you found
+
+Focus on actionable insights for the on-call engineer.
+"""
+
+    try:
+        # Get agent manager and switch to customer
+        settings = get_settings()
+        agent_manager = AgentManager(settings)
+        await agent_manager.initialize()
+        
+        # Switch to customer's MCP servers
+        mcp_servers = customer._raw_mcp_servers if hasattr(customer, '_raw_mcp_servers') else []
+        if mcp_servers:
+            try:
+                await agent_manager.switch_customer(customer_name, mcp_servers)
+                logger.info(f"Switched to {customer_name}'s MCP servers for investigation")
+            except Exception as switch_err:
+                logger.warning(f"Failed to switch to {customer_name}'s MCP: {switch_err}")
+                # Continue with default MCP servers
+
+        # Run investigation
+        session_id = f"alert-investigation-{customer_name}-{datetime.utcnow().timestamp()}"
+        result = await agent_manager.run_chat(
+            message=investigation_prompt,
+            session_id=session_id
+        )
+
+        # Parse the AI response
+        ai_response = result.message
+
+        # Log the full AI response for debugging
+        logger.info(f"AI Investigation Response for {customer_name}:\n{ai_response}\n{'='*80}")
+
+        # Extract structured data from response
+        investigation = AlertInvestigation(
+            alert_name=alert_name,
+            severity=severity,
+            summary=summary,
+            root_cause_hypothesis=extract_section(ai_response, "Root Cause"),
+            impact_assessment=extract_section(ai_response, "Impact"),
+            recommended_actions=extract_actions(ai_response),
+            related_evidence=extract_evidence(ai_response),
+            confidence=calculate_confidence(result),
+            investigated_at=datetime.utcnow()
+        )
+
+        logger.info(f"Investigation completed for {customer_name}: {alert_name}")
+        return AlertInvestigationResult(
+            investigation=investigation,
+            raw_response=ai_response
+        )
+
+    except Exception as e:
+        logger.error(f"Error during AI investigation for {customer_name}: {e}", exc_info=True)
+
+        # Fallback investigation if AI fails
+        investigation = AlertInvestigation(
+            alert_name=alert_name,
+            severity=severity,
+            summary=summary,
+            root_cause_hypothesis="AI investigation failed - manual investigation required",
+            impact_assessment=f"Alert triggered for {customer_name}: {description}",
             recommended_actions=["Check Grafana dashboard", "Review recent deployments", "Check service logs"],
             related_evidence=["AI investigation unavailable"],
             confidence=0.0,
@@ -945,14 +1468,42 @@ def calculate_confidence(result) -> float:
 
 # Management endpoints
 @router.get("/analyses")
-async def list_alert_analyses(limit: int = 50):
-    """List recent alert analyses."""
-    analysis_dir = _get_analysis_dir()
-    analysis_files = sorted(
-        analysis_dir.glob("*.json"),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True
-    )[:limit]
+async def list_alert_analyses(limit: int = 50, customer_name: Optional[str] = None):
+    """
+    List recent alert analyses.
+    
+    Args:
+        limit: Maximum number of analyses to return
+        customer_name: Optional filter by customer. If provided, only returns
+                       analyses for that customer. Otherwise returns all.
+    """
+    if customer_name:
+        # Get customer-specific analyses
+        analysis_dir = _get_analysis_dir(customer_name)
+        analysis_files = sorted(
+            analysis_dir.glob("*.json"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True
+        )[:limit]
+    else:
+        # Get all analyses (both root and customer subdirectories)
+        base_dir = _get_analysis_dir()
+        analysis_files = []
+        
+        # Root level analyses (legacy)
+        analysis_files.extend(base_dir.glob("*.json"))
+        
+        # Customer subdirectory analyses
+        for subdir in base_dir.iterdir():
+            if subdir.is_dir():
+                analysis_files.extend(subdir.glob("*.json"))
+        
+        # Sort by modification time and limit
+        analysis_files = sorted(
+            analysis_files,
+            key=lambda path: path.stat().st_mtime,
+            reverse=True
+        )[:limit]
 
     analyses = []
     for analysis_file in analysis_files:
@@ -961,6 +1512,7 @@ async def list_alert_analyses(limit: int = 50):
             investigation = data.get("investigation", {})
             analyses.append({
                 "id": data.get("id", analysis_file.stem),
+                "customer_name": data.get("customer_name"),
                 "alert_name": data.get("alert_name", "Unknown Alert"),
                 "severity": data.get("severity", "info"),
                 "status": data.get("status", "unknown"),
@@ -974,19 +1526,40 @@ async def list_alert_analyses(limit: int = 50):
 
     return {
         "count": len(analyses),
+        "customer_name": customer_name,
         "analyses": analyses
     }
 
 
 @router.get("/analyses/{analysis_id}")
-async def get_alert_analysis(analysis_id: str):
-    """Get a specific alert analysis."""
+async def get_alert_analysis(analysis_id: str, customer_name: Optional[str] = None):
+    """
+    Get a specific alert analysis.
+    
+    Args:
+        analysis_id: The analysis ID
+        customer_name: Optional customer name to look in customer-specific directory
+    """
+    # Try customer-specific directory first if provided
+    if customer_name:
+        analysis_file = _get_analysis_dir(customer_name) / f"{analysis_id}.json"
+        if analysis_file.exists():
+            return json.loads(analysis_file.read_text(encoding="utf-8"))
+    
+    # Try root directory
     analysis_file = _get_analysis_dir() / f"{analysis_id}.json"
+    if analysis_file.exists():
+        return json.loads(analysis_file.read_text(encoding="utf-8"))
+    
+    # Search all customer directories
+    base_dir = _get_analysis_dir()
+    for subdir in base_dir.iterdir():
+        if subdir.is_dir():
+            analysis_file = subdir / f"{analysis_id}.json"
+            if analysis_file.exists():
+                return json.loads(analysis_file.read_text(encoding="utf-8"))
 
-    if not analysis_file.exists():
-        raise HTTPException(status_code=404, detail=f"Analysis {analysis_id} not found")
-
-    return json.loads(analysis_file.read_text(encoding="utf-8"))
+    raise HTTPException(status_code=404, detail=f"Analysis {analysis_id} not found")
 
 
 @router.get("/tickets")

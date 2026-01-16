@@ -19,6 +19,11 @@ from backend.tools.mcp_client import MCPClient
 from backend.tools.result_formatter import ToolResultFormatter
 from backend.utils.logger import get_logger
 
+# Import for type hints - avoid circular import
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from backend.app.mcp_servers import MCPServer
+
 
 logger = get_logger(__name__)
 formatter = ToolResultFormatter()
@@ -642,7 +647,338 @@ async def build_mcp_tools(settings: Settings) -> List[Tool]:
         logger.error(f"Failed to discover MCP tools: {e}")
         # Return empty list if discovery fails - agent will still work without tools
         return []
-    
-    
 
 
+async def build_mcp_tools_for_servers(
+    settings: Settings,
+    mcp_servers: List["MCPServer"]
+) -> List[Tool]:
+    """
+    Build LangChain tools from a list of MCP servers for a customer.
+    
+    Each server type's tools are prefixed with the server type name
+    (e.g., alertmanager__get_alerts, grafana__search_dashboards).
+    The primary server (first Grafana) gets unprefixed tool names for compatibility.
+    
+    Args:
+        settings: Application settings
+        mcp_servers: List of MCPServer objects from a customer config
+        
+    Returns:
+        List of LangChain tools from all MCP servers
+    """
+    langchain_tools: List[Tool] = []
+    
+    # Find the primary Grafana server (first one)
+    primary_grafana_url = None
+    for server in mcp_servers:
+        if server.type == "grafana":
+            primary_grafana_url = server.url
+            break
+    
+    for mcp_server in mcp_servers:
+        server_type = mcp_server.type
+        server_url = mcp_server.url
+        is_primary = (server_type == "grafana" and server_url == primary_grafana_url)
+        
+        client = MCPClient(
+            settings=settings,
+            server_url=server_url,
+            cache_namespace=server_type
+        )
+        
+        try:
+            await client.connect()
+            logger.info(
+                f"Connected to {server_type} MCP server for tool discovery",
+                extra={"type": server_type, "url": server_url}
+            )
+            
+            tools_response = await client.session.list_tools()
+            logger.info(
+                f"Discovered {len(tools_response.tools)} tools from {server_type} MCP server"
+            )
+            
+        except Exception as e:
+            logger.error(
+                f"Failed to discover tools for {server_type} MCP server at {server_url}: {e}"
+            )
+            await client.disconnect()
+            continue
+        
+        for mcp_tool in tools_response.tools:
+            # Primary Grafana tools keep original names for compatibility
+            # Other servers get prefixed (e.g., alertmanager__get_alerts)
+            if is_primary:
+                display_name = mcp_tool.name
+            else:
+                display_name = f"{server_type}__{mcp_tool.name}"
+            
+            # Reuse the existing make_tool_func pattern
+            def make_tool_func(
+                tool_name: str,
+                display_name: str,
+                server_type: str,
+                server_url: str,
+                is_primary: bool,
+            ):
+                async def tool_func(*args: Any, **kwargs: Any) -> str:
+                    """Execute an MCP tool with the given input."""
+                    try:
+                        command: Optional[str] = None
+                        # Normalize arguments
+                        arguments_dict: Dict[str, Any] = {}
+                        if args:
+                            if len(args) == 1:
+                                arguments = args[0]
+                                if isinstance(arguments, dict):
+                                    arguments_dict = arguments
+                                elif isinstance(arguments, str):
+                                    cleaned = arguments.strip()
+                                    if cleaned.startswith("{"):
+                                        arguments_dict = json.loads(cleaned)
+                                    elif cleaned:
+                                        arguments_dict = {"input": cleaned}
+                                    else:
+                                        arguments_dict = {}
+                                else:
+                                    return "Error: Unsupported argument type"
+                            else:
+                                return "Error: Unsupported positional arguments"
+                        elif "arguments" in kwargs and len(kwargs) == 1:
+                            arguments = kwargs.get("arguments")
+                            if arguments is None:
+                                arguments_dict = {}
+                            elif isinstance(arguments, dict):
+                                arguments_dict = arguments
+                            elif isinstance(arguments, str):
+                                cleaned = arguments.strip()
+                                if cleaned.startswith("{"):
+                                    arguments_dict = json.loads(cleaned)
+                                elif cleaned:
+                                    arguments_dict = {"input": cleaned}
+                                else:
+                                    arguments_dict = {}
+                            else:
+                                return "Error: Unsupported argument type"
+                        else:
+                            arguments_dict = kwargs
+                        
+                        # Grafana-specific argument normalization
+                        if server_type == "grafana":
+                            if tool_name == "get_dashboard_summary":
+                                logger.info(
+                                    "Dashboard summary raw arguments",
+                                    extra={
+                                        "args": args,
+                                        "kwargs": kwargs,
+                                        "arguments_dict": arguments_dict,
+                                    },
+                                )
+
+                            if "datasource_uid" in arguments_dict and "datasourceUid" not in arguments_dict:
+                                arguments_dict["datasourceUid"] = arguments_dict.pop("datasource_uid")
+
+                            if "uid" not in arguments_dict and "input" in arguments_dict:
+                                if tool_name in {
+                                    "get_dashboard_summary",
+                                    "get_dashboard_by_uid",
+                                    "get_dashboard_property",
+                                    "get_dashboard_panel_queries",
+                                }:
+                                    arguments_dict["uid"] = arguments_dict.pop("input")
+
+                            # Auto-select Prometheus datasource if missing
+                            if is_primary and tool_name == "list_prometheus_metric_names" and "datasourceUid" not in arguments_dict:
+                                temp_client = MCPClient(
+                                    settings=settings,
+                                    server_url=server_url,
+                                    cache_namespace=server_type
+                                )
+                                try:
+                                    ds_result = await temp_client.invoke_tool("list_datasources", {})
+                                finally:
+                                    await temp_client.disconnect()
+                                prom_uid = _extract_prometheus_uid(ds_result)
+                                if prom_uid:
+                                    arguments_dict["datasourceUid"] = prom_uid
+
+                            if is_primary and tool_name == "get_dashboard_summary":
+                                uid_value = _coerce_uid(arguments_dict, args, kwargs) or ""
+                                if uid_value and "uid" not in arguments_dict:
+                                    arguments_dict["uid"] = uid_value
+                                if uid_value:
+                                    fallback = _fallback_get_dashboard_summary(uid_value)
+                                    if fallback is not None:
+                                        logger.info(
+                                            "Using direct Grafana API for dashboard summary",
+                                            extra={"uid": uid_value}
+                                        )
+                                        return formatter.format(tool_name, fallback)
+                            
+                            # Normalize query arguments for Prometheus/Loki
+                            arguments_dict = _normalize_query_arguments(tool_name, arguments_dict)
+
+                        # Command allowlist check (for SSH/Linux MCP servers)
+                        command = _extract_command(arguments_dict)
+                        if command:
+                            allowlist = settings.mcp_command_allowlist
+                            is_allowed = _is_command_allowed(command, allowlist)
+                            event = {
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "server": server_type,
+                                "tool": display_name,
+                                "command": command,
+                                "allowed": is_allowed,
+                                "mode": get_execution_mode(),
+                                "arguments": arguments_dict,
+                            }
+
+                            if not is_allowed:
+                                event["status"] = "blocked"
+                                _write_audit_event(settings, event)
+                                return (
+                                    f"Command blocked by policy. "
+                                    f"Allowed commands: {', '.join(allowlist)}"
+                                )
+
+                            if get_execution_mode() == "suggest":
+                                event["status"] = "suggested"
+                                _write_audit_event(settings, event)
+                                return (
+                                    "Command execution is disabled (suggest-only mode). "
+                                    f"Suggested command: `{command}`"
+                                )
+
+                        logger.info(
+                            f"Invoking MCP tool: {display_name}",
+                            extra={"arguments": arguments_dict, "server_type": server_type}
+                        )
+                        
+                        # Use a fresh MCP client per call
+                        call_client = MCPClient(
+                            settings=settings,
+                            server_url=server_url,
+                            cache_namespace=server_type
+                        )
+                        try:
+                            try:
+                                result = await call_client.invoke_tool(tool_name, arguments_dict)
+                            except Exception as e:
+                                if server_type == "grafana" and _should_retry_query_error(e):
+                                    retry_args = _normalize_query_arguments(
+                                        tool_name,
+                                        arguments_dict,
+                                        force_step_seconds=True
+                                    )
+                                    logger.info(
+                                        "Retrying MCP tool with normalized arguments",
+                                        extra={"tool": tool_name, "arguments": retry_args}
+                                    )
+                                    result = await call_client.invoke_tool(tool_name, retry_args)
+                                else:
+                                    raise
+                        finally:
+                            await call_client.disconnect()
+
+                        # Use structured formatter for better LLM comprehension
+                        formatted_result = formatter.format(tool_name, result)
+
+                        logger.debug(f"Tool {tool_name} completed", extra={
+                            "result_length": len(formatted_result)
+                        })
+
+                        if command:
+                            _write_audit_event(
+                                settings,
+                                {
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "server": server_type,
+                                    "tool": display_name,
+                                    "command": command,
+                                    "allowed": True,
+                                    "mode": get_execution_mode(),
+                                    "status": "executed",
+                                    "arguments": arguments_dict,
+                                },
+                            )
+
+                        return formatted_result
+
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse tool input as JSON: {e}")
+                        return f"Error: Invalid JSON input - {str(e)}"
+                    except Exception as e:
+                        if server_type == "grafana" and is_primary and tool_name == "get_dashboard_summary":
+                            fallback = _fallback_get_dashboard_summary(
+                                arguments_dict.get("uid", "")
+                            )
+                            if fallback is not None:
+                                logger.warning(
+                                    "Falling back to direct Grafana API for dashboard summary",
+                                    extra={"uid": arguments_dict.get("uid", "")}
+                                )
+                                return formatter.format(tool_name, fallback)
+
+                        if command:
+                            _write_audit_event(
+                                settings,
+                                {
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "server": server_type,
+                                    "tool": display_name,
+                                    "command": command,
+                                    "allowed": True,
+                                    "mode": get_execution_mode(),
+                                    "status": "failed",
+                                    "error": str(e),
+                                    "arguments": arguments_dict,
+                                },
+                            )
+
+                        logger.error(
+                            f"Tool execution failed: {e}",
+                            extra={"tool": display_name, "server_type": server_type}
+                        )
+                        return f"Error executing {display_name}: {str(e)}"
+
+                return tool_func
+
+            # Create the tool function with closure
+            tool_func = make_tool_func(
+                mcp_tool.name,
+                display_name,
+                server_type,
+                server_url,
+                is_primary
+            )
+            args_schema = _build_args_schema(mcp_tool)
+
+            # Build description with parameter info
+            description = mcp_tool.description or f"Execute {mcp_tool.name}"
+            description += f"\n\nMCP Server Type: {server_type}"
+            if hasattr(mcp_tool, 'inputSchema') and mcp_tool.inputSchema:
+                schema = mcp_tool.inputSchema
+                if 'properties' in schema:
+                    params = ', '.join(schema['properties'].keys())
+                    description += f"\n\nParameters: {params}"
+                if 'required' in schema:
+                    required = ', '.join(schema['required'])
+                    description += f"\n\nRequired: {required}"
+
+            # Create LangChain Tool
+            tool_kwargs = {
+                "coroutine": tool_func,
+                "name": display_name,
+                "description": description,
+            }
+            if args_schema is not None:
+                tool_kwargs["args_schema"] = args_schema
+            langchain_tools.append(StructuredTool.from_function(**tool_kwargs))
+        
+        await client.disconnect()
+    
+    logger.info(
+        f"Successfully created {len(langchain_tools)} LangChain tools from {len(mcp_servers)} MCP servers"
+    )
+    return langchain_tools

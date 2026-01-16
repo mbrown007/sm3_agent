@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.agents import Tool as LangChainTool
@@ -10,15 +11,29 @@ from langchain_openai import ChatOpenAI
 import inspect
 
 from backend.app.config import Settings
+from backend.app.mcp_servers import get_mcp_server_manager, Customer, MCPServer
 from backend.agents.suggestions import get_suggestion_engine
+from backend.containers import get_container_manager, ContainerState, DOCKER_AVAILABLE
 from backend.schemas.models import AgentResult
-from backend.tools.tool_wrappers import build_mcp_tools
+from backend.tools.tool_wrappers import build_mcp_tools, build_mcp_tools_for_servers
 from backend.utils.logger import get_logger
 from backend.utils.prompts import SYSTEM_PROMPT
 
 
 logger = get_logger(__name__)
 suggestion_engine = get_suggestion_engine()
+
+
+@dataclass
+class CustomerSwitchResult:
+    """Result of switching to a customer."""
+    success: bool
+    customer_name: str
+    message: str
+    connected_mcps: List[str]  # List of MCP types that connected successfully
+    failed_mcps: List[str]  # List of MCP types that failed
+    tool_count: int
+    is_starting: bool = False  # True if containers are still starting
 
 
 class AgentManager:
@@ -34,6 +49,10 @@ class AgentManager:
         )
         self.tools: List[LangChainTool] = []
         self._initialized = False
+        self._current_server_url: Optional[str] = None
+        self._current_server_name: Optional[str] = None
+        self._current_customer: Optional[Customer] = None
+        self._current_mcp_servers: List[MCPServer] = []
 
         # Store separate memory for each session
         self.session_memories: Dict[str, ConversationBufferMemory] = {}
@@ -62,20 +81,216 @@ class AgentManager:
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
 
-    async def initialize(self) -> None:
+    async def initialize(self, server_url: Optional[str] = None) -> None:
         """
         Initialize the agent with MCP tools.
 
         This must be called before run_chat. It's separate from __init__
         because tool discovery is async.
+
+        Args:
+            server_url: Optional specific Grafana MCP server URL to connect to.
+                       If not provided, uses the default from settings.
         """
-        if self._initialized:
+        if self._initialized and server_url == self._current_server_url:
             return
 
-        logger.info("Initializing agent with MCP tools")
-        self.tools = await build_mcp_tools(settings=self.settings)
+        # If we're switching servers, mark as not initialized
+        if server_url != self._current_server_url:
+            self._initialized = False
+            logger.info(f"Switching Grafana server from {self._current_server_url} to {server_url}")
+
+        logger.info("Initializing agent with MCP tools", extra={"server_url": server_url})
+        
+        # Temporarily override the settings if a custom URL is provided
+        if server_url:
+            original_url = self.settings.mcp_server_url
+            self.settings.mcp_server_url = server_url
+            try:
+                self.tools = await build_mcp_tools(settings=self.settings)
+            finally:
+                self.settings.mcp_server_url = original_url
+            self._current_server_url = server_url
+        else:
+            self.tools = await build_mcp_tools(settings=self.settings)
+            self._current_server_url = self.settings.mcp_server_url
+
         logger.info(f"Agent initialized with {len(self.tools)} tools")
         self._initialized = True
+
+    async def switch_grafana_server(self, server_name: str) -> bool:
+        """
+        Switch to a different Grafana server by name.
+        DEPRECATED: Use switch_customer() instead.
+
+        Args:
+            server_name: Name of the server from grafana_servers.json
+
+        Returns:
+            True if switch was successful, False otherwise
+        """
+        # Backwards compatibility - delegate to switch_customer
+        result = await self.switch_customer(server_name)
+        return result.success
+    
+    async def switch_customer(self, customer_name: str, use_containers: bool = True) -> CustomerSwitchResult:
+        """
+        Switch to a different customer, activating ALL their MCP servers.
+
+        This starts containers on-demand for the customer's MCP servers,
+        waits for health checks, and makes all tools available to the agent.
+
+        Args:
+            customer_name: Name of the customer from mcp_servers.json
+            use_containers: Whether to use dynamic container management (default True)
+
+        Returns:
+            CustomerSwitchResult with status of the switch
+        """
+        server_manager = get_mcp_server_manager()
+        customer = server_manager.get_customer(customer_name)
+        
+        if not customer:
+            logger.error(f"Unknown customer: {customer_name}")
+            return CustomerSwitchResult(
+                success=False,
+                customer_name=customer_name,
+                message=f"Customer '{customer_name}' not found",
+                connected_mcps=[],
+                failed_mcps=[],
+                tool_count=0
+            )
+        
+        logger.info(
+            f"Switching to customer: {customer_name} with {len(customer.mcp_servers)} MCP server(s)",
+            extra={"server_types": customer.get_server_types(), "has_genesys": customer.has_genesys}
+        )
+        
+        self._current_customer = customer
+        self._current_server_name = customer_name
+        self._current_mcp_servers = customer.mcp_servers
+        self._initialized = False
+        
+        connected_mcps = []
+        failed_mcps = []
+        
+        # Use dynamic containers if enabled, Docker is available, and config has container settings
+        if use_containers and DOCKER_AVAILABLE and server_manager.config.container_settings:
+            try:
+                container_manager = get_container_manager()
+                
+                # Configure manager from settings
+                cs = server_manager.config.container_settings
+                container_manager.configure(
+                    max_warm=cs.max_warm_containers,
+                    network_name=cs.network_name,
+                    health_timeout=cs.health_check_timeout_seconds,
+                    health_interval=cs.health_check_interval_seconds,
+                    startup_timeout=cs.container_startup_timeout_seconds,
+                    port_ranges=cs.port_ranges,
+                    images=cs.images,
+                )
+                
+                # Start containers for this customer
+                customer_containers = await container_manager.start_customer_containers(
+                    customer_name=customer_name,
+                    mcp_servers=customer._raw_mcp_servers,
+                    wait_for_healthy=True
+                )
+                
+                # Update MCP server URLs from running containers
+                container_urls = container_manager.get_container_urls(customer_name)
+                for mcp_server in customer.mcp_servers:
+                    if mcp_server.type in container_urls:
+                        mcp_server.url = container_urls[mcp_server.type]
+                        connected_mcps.append(mcp_server.type)
+                    else:
+                        failed_mcps.append(mcp_server.type)
+                
+                # Check container states for any failures
+                for mcp_type, status in customer_containers.containers.items():
+                    if status.state not in (ContainerState.HEALTHY, ContainerState.RUNNING):
+                        if mcp_type.value not in failed_mcps:
+                            failed_mcps.append(mcp_type.value)
+                        logger.warning(
+                            f"Container {mcp_type.value} for {customer_name} is {status.state.value}: {status.error_message}"
+                        )
+                
+            except Exception as e:
+                logger.error(f"Container management failed for {customer_name}: {e}")
+                # Fall back to static URLs if containers fail
+                logger.info("Falling back to static MCP URLs")
+                for mcp_server in customer.mcp_servers:
+                    if mcp_server.url:
+                        connected_mcps.append(mcp_server.type)
+                    else:
+                        failed_mcps.append(mcp_server.type)
+        else:
+            # Use static URLs from config (legacy mode)
+            for mcp_server in customer.mcp_servers:
+                if mcp_server.url:
+                    connected_mcps.append(mcp_server.type)
+                else:
+                    failed_mcps.append(mcp_server.type)
+        
+        # Get the primary Grafana URL for backwards compatibility
+        grafana_server = customer.get_server_by_type("grafana")
+        if grafana_server:
+            self._current_server_url = grafana_server.url
+        
+        # Build tools from ALL connected MCP servers
+        try:
+            # Filter to only connected servers
+            connected_servers = [s for s in customer.mcp_servers if s.type in connected_mcps and s.url]
+            
+            if not connected_servers:
+                return CustomerSwitchResult(
+                    success=False,
+                    customer_name=customer_name,
+                    message="No MCP servers available",
+                    connected_mcps=connected_mcps,
+                    failed_mcps=failed_mcps,
+                    tool_count=0
+                )
+            
+            self.tools = await build_mcp_tools_for_servers(
+                settings=self.settings,
+                mcp_servers=connected_servers
+            )
+            logger.info(f"Customer {customer_name} initialized with {len(self.tools)} tools")
+            self._initialized = True
+            
+            return CustomerSwitchResult(
+                success=True,
+                customer_name=customer_name,
+                message=f"Connected to {len(connected_mcps)} MCP server(s)",
+                connected_mcps=connected_mcps,
+                failed_mcps=failed_mcps,
+                tool_count=len(self.tools)
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize tools for customer {customer_name}: {e}")
+            return CustomerSwitchResult(
+                success=False,
+                customer_name=customer_name,
+                message=str(e),
+                connected_mcps=connected_mcps,
+                failed_mcps=failed_mcps,
+                tool_count=0
+            )
+    
+    def get_current_customer(self) -> Optional[Customer]:
+        """Get the currently selected customer."""
+        return self._current_customer
+
+    def get_current_server_name(self) -> Optional[str]:
+        """Get the name of the currently selected Grafana server."""
+        return self._current_server_name
+
+    def get_current_server_url(self) -> Optional[str]:
+        """Get the URL of the currently selected Grafana server."""
+        return self._current_server_url
 
     def get_or_create_memory(self, session_id: str) -> ConversationBufferMemory:
         """

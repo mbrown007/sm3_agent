@@ -1,0 +1,58 @@
+SM3 Alerts RunBook - Avaya Communication Manager (ACM) - LSP not Registered
+KB0011832  -  v4.0 (Latest Version)
+
+1 views
+
+
+SM3 Alert RunBook – Avaya Communication Manager (ACM) - LSP not Registered
+
+Alert Name: LSP not Registered
+
+Alert Expression: (acm_survivable_processor_registered{type="acm",name != ""} * on (fqdn, number) group_left(name) acm_survivable_processor_info) == 0
+
+Category: Avaya Enterprise (Convergence)
+
+Description: This alert indicates that a survivable processor has not been registered on a CM for over 10 minutes
+
+Possible Cause(s):
+
+Network issue / communications failure between main CM and LSP.
+LSP registration process issue.
+Impact: 
+
+If the survivable system is not in LSP mode then it means that there is a lack of resiliency as it may not be able to take over call processing in the event of a network issue.
+
+If the system is in LSP mode, it should mean that local call processing should still work via the LSP but call routing could be affected for those users and they may not be able to make / receive all types of calls. Users on the main CM may not be able to contact users on the LSP. 
+
+Next Steps:
+
+Log onto the main CM and run the command: 
+
+list survivable-processor
+
+Check to see if the 'Reg' column still has a 'n' in it - if it is then the LSP is not registered to CM.
+If the LSP sits in a media gateway then check the registration status of the media gateway by running the command:
+list media-gateway
+
+If the media-gateway is also unregistered then this indicates a communication failure between CM and the MG.
+
+Run ping / traceroute commands from the CM to the LSP to see what the state of connectivity is.
+
+If the LSP is in a media gateway, run ping / traceroute commands from the CM to the MG to see what the state of connectivity is.
+
+If there is no connectivity then check if there are any ongoing network issues (may need to check with customer).
+
+
+If the LSP's MG is registered to the main CM then this indicates a possible issue with the LSP registration process. 
+Log into the LSP and run the command - status media-gateway - this will show if any media gateways are registered to the LSP. The command 'list registered' on the LSP will also show which phones the LSP has registered to it.
+If the LSP has nothing registered to it then it can be safely reset to force a re-registration - run the command 'reset system 4' on the LSP (make sure this is on the LSP not the main CM).
+If the LSP has endpoints registered to it then it will be necessary to investigate the reason for why it has gone into LSP mode and resolving this first.
+
+Extra notes:
+
+ 
+
+
+
+Revised by Jack Rogan
+Last modified 5 months ago

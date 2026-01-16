@@ -1,73 +1,74 @@
-# Simplified docker-compose for running frontend + backend locally
-# Uses pre-built images from GitHub Container Registry
-# MCP Server and Grafana run on separate machines
+# SM3 Agent - Docker Compose
+# Development environment with hot-reload
+#
+# Usage:
+#   docker compose up -d          # Start all services
+#   docker compose up -d agent    # Start backend only
+#   docker compose logs -f agent  # View backend logs
+#
+# See docs/DOCKER.md for full documentation
 
 services:
-  # Python Agent Backend (pre-built from GHCR)
-  agent:
-    image: ghcr.io/brownster/sm3_agent-agent:latest
-    container_name: grafana-agent-backend
+  # Grafana MCP Server (Official Image)
+  mcp-grafana:
+    image: grafana/mcp-grafana:latest
+    container_name: grafana-mcp-server-dev
     environment:
-      # Required - LLM Configuration
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-
-      # Required - External Services (on separate machines)
-      - MCP_SERVER_URL=${MCP_SERVER_URL}
-      - MCP_SERVER_URLS=${MCP_SERVER_URLS:-}
-      - MCP_SERVER_NAMES=${MCP_SERVER_NAMES:-}
       - GRAFANA_URL=${GRAFANA_URL}
-      - GRAFANA_PUBLIC_URL=${GRAFANA_PUBLIC_URL:-}
-      - GRAFANA_TOKEN=${GRAFANA_TOKEN}
+      - GRAFANA_SERVICE_ACCOUNT_TOKEN=${GRAFANA_TOKEN}
+    command: ["--transport", "streamable-http", "--address", "0.0.0.0:8888", "--debug"]
+    ports:
+      - "8888:8888"
+    restart: unless-stopped
+    networks:
+      - sm3-network
 
-      # Optional - Agent Configuration
+  # Python Agent Backend
+  agent:
+    build:
+      context: ./sm3_agent
+      dockerfile: Dockerfile
+    container_name: grafana-agent-backend-dev
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
-      - CACHE_MAX_SIZE=${CACHE_MAX_SIZE:-1000}
-      - CACHE_DEFAULT_TTL=${CACHE_DEFAULT_TTL:-300}
-      - KB_DIR=${KB_DIR:-/data/kb}
-      - ALERT_ANALYSIS_DIR=${ALERT_ANALYSIS_DIR:-/data/alert-analyses}
-      - MCP_EXECUTION_MODE=${MCP_EXECUTION_MODE:-suggest}
-      - MCP_COMMAND_ALLOWLIST=${MCP_COMMAND_ALLOWLIST:-ping,curl,nmap,snmpwalk,sshprobe}
-      - MCP_AUDIT_DIR=${MCP_AUDIT_DIR:-/data/mcp-audit}
-
-      # Service Configuration
-      - SERVICE=backend
-      - BACKEND_PORT=8000
+      - MCP_SERVER_URL=http://mcp-grafana:8888/mcp
+      - GRAFANA_URL=${GRAFANA_URL}
+      - GRAFANA_PUBLIC_URL=${GRAFANA_PUBLIC_URL:-${GRAFANA_URL}}
+      - GRAFANA_TOKEN=${GRAFANA_TOKEN}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3100,http://localhost:3000}
+      - KB_DIR=/data/kb
+      - ALERT_ANALYSIS_DIR=/data/alert-analyses
     ports:
-      - "7000:8000"
+      - "8000:8000"
     volumes:
-      - ./kb:/data/kb
+      - ./sm3_agent/backend:/app/backend:ro
+      - ./sm3_agent/mcp_servers.json:/app/mcp_servers.json:ro
+      - ./kb:/data/kb:ro
       - ./alert-analyses:/data/alert-analyses
-      - ./mcp-audit:/data/mcp-audit
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    restart: unless-stopped
-    networks:
-      - grafana-agent-network
-
-  # React Frontend (pre-built from GHCR)
-  frontend:
-    image: ghcr.io/brownster/sm3_agent-frontend:latest
-    container_name: grafana-agent-frontend
-    ports:
-      - "3000:80"
     depends_on:
-      agent:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      - mcp-grafana
     restart: unless-stopped
     networks:
-      - grafana-agent-network
+      - sm3-network
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend/web
+      dockerfile: Dockerfile
+    container_name: grafana-agent-frontend-dev
+    ports:
+      - "3100:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - agent
+    restart: unless-stopped
+    networks:
+      - sm3-network
 
 networks:
-  grafana-agent-network:
+  sm3-network:
     driver: bridge
+    name: sm3-mcp-network

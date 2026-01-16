@@ -1,0 +1,372 @@
+{
+  "_comment": "Customer MCP configuration with dynamic container management.",
+  "_note": "Containers are spawned on-demand when customer is selected. Max 3 warm containers (LRU cache).",
+  "customers": [
+    {
+      "name": "Acolad",
+      "description": "Genesys Cloud customer",
+      "host": "maas-ng-acolad.acolad.services.sabio.co.uk",
+      "has_genesys": true,
+      "mcp_servers": [
+        {
+          "type": "grafana",
+          "config": {
+            "grafana_url": "https://maas-ng-acolad.acolad.services.sabio.co.uk",
+            "token_env": "GRAFANA_TOKEN_ACOLAD"
+          }
+        },
+        {
+          "type": "alertmanager",
+          "config": {
+            "alertmanager_url": "https://maas-ng-acolad.acolad.services.sabio.co.uk:9093"
+          }
+        },
+        {
+          "type": "genesys",
+          "config": {
+            "region": "mypurecloud.com",
+            "client_id_env": "GENESYS_CLIENT_ID_ACOLAD",
+            "client_secret_env": "GENESYS_CLIENT_SECRET_ACOLAD"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bromford",
+      "description": "Genesys Cloud customer",
+      "host": "maas-ng-bromford.bromford.services.sabio.co.uk",
+      "has_genesys": true,
+      "mcp_servers": [
+        {
+          "type": "grafana",
+          "config": {
+            "grafana_url": "https://maas-ng-bromford.bromford.services.sabio.co.uk",
+            "token_env": "GRAFANA_TOKEN_BROMFORD"
+          }
+        },
+        {
+          "type": "alertmanager",
+          "config": {
+            "alertmanager_url": "https://maas-ng-bromford.bromford.services.sabio.co.uk:9093"
+          }
+        },
+        {
+          "type": "genesys",
+          "config": {
+            "region": "mypurecloud.com",
+            "client_id_env": "GENESYS_CLIENT_ID_BROMFORD",
+            "client_secret_env": "GENESYS_CLIENT_SECRET_BROMFORD"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Butlins",
+      "description": "Genesys Cloud customer",
+      "host": "maas-ng-butlins.butlins.services.sabio.co.uk",
+      "has_genesys": true,
+      "mcp_servers": [
+        {
+          "type": "grafana",
+          "config": {
+            "grafana_url": "https://maas-ng-butlins.butlins.services.sabio.co.uk",
+            "token_env": "GRAFANA_TOKEN_BUTLINS"
+          }
+        },
+        {
+          "type": "alertmanager",
+          "config": {
+            "alertmanager_url": "https://maas-ng-butlins.butlins.services.sabio.co.uk:9093"
+          }
+        },
+        {
+          "type": "genesys",
+          "config": {
+            "region": "mypurecloud.com",
+            "client_id_env": "GENESYS_CLIENT_ID_BUTLINS",
+            "client_secret_env": "GENESYS_CLIENT_SECRET_BUTLINS"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Caixabank",
+      "description": "Genesys Cloud customer",
+      "host": "maas-ng-caixabank.caixabank.services.sabio.co.uk",
+      "has_genesys": true,
+      "mcp_servers": [
+        {
+          "type": "grafana",
+          "config": {
+            "grafana_url": "https://maas-ng-caixabank.caixabank.services.sabio.co.uk",
+            "token_env": "GRAFANA_TOKEN_CAIXABANK"
+          }
+        },
+        {
+          "type": "alertmanager",
+          "config": {
+            "alertmanager_url": "https://maas-ng-caixabank.caixabank.services.sabio.co.uk:9093"
+          }
+        },
+        {
+          "type": "genesys",
+          "config": {
+            "region": "mypurecloud.com",
+            "client_id_env": "GENESYS_CLIENT_ID_CAIXABANK",
+            "client_secret_env": "GENESYS_CLIENT_SECRET_CAIXABANK"
+          }
+        }
+      ]
+    },
+    {
+      "name": "DaviesGroup",
+      "description": "Genesys Cloud customer",
+      "host": "maas-ng-daviesgroup.daviesgroup.services.sabio.co.uk",
+      "has_genesys": true,
+      "mcp_servers": [
+        {
+          "type": "grafana",
+          "config": {
+            "grafana_url": "https://maas-ng-daviesgroup.daviesgroup.services.sabio.co.uk",
+            "token_env": "GRAFANA_TOKEN_DAVIESGROUP"
+          }
+        },
+        {
+          "type": "alertmanager",
+          "config": {
+            "alertmanager_url": "https://maas-ng-daviesgroup.daviesgroup.services.sabio.co.uk:9093"
+          }
+        },
+        {
+          "type": "genesys",
+          "config": {
+            "region": "mypurecloud.com",
+            "client_id_env": "GENESYS_CLIENT_ID_DAVIESGROUP",
+            "client_secret_env": "GENESYS_CLIENT_SECRET_DAVIESGROUP"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Essent",
+      "description": "Genesys Cloud customer",
+      "host": "maas-ng-essent.essent.services.sabio.co.uk",
+      "has_genesys": true,
+      "mcp_servers": [
+        {
+          "type": "grafana",
+          "config": {
+            "grafana_url": "https://maas-ng-essent.essent.services.sabio.co.uk",
+            "token_env": "GRAFANA_TOKEN_ESSENT"
+          }
+        },
+        {
+          "type": "alertmanager",
+          "config": {
+            "alertmanager_url": "https://maas-ng-essent.essent.services.sabio.co.uk:9093"
+          }
+        },
+        {
+          "type": "genesys",
+          "config": {
+            "region": "mypurecloud.de",
+            "client_id_env": "GENESYS_CLIENT_ID_ESSENT",
+            "client_secret_env": "GENESYS_CLIENT_SECRET_ESSENT"
+          }
+        }
+      ]
+    },
+    {
+      "name": "IWG",
+      "description": "Genesys Cloud customer",
+      "host": "maas-ng-iwg.services.sabio.co.uk",
+      "has_genesys": true,
+      "mcp_servers": [
+        {
+          "type": "grafana",
+          "config": {
+            "grafana_url": "https://maas-ng-iwg.services.sabio.co.uk",
+            "token_env": "GRAFANA_TOKEN_IWG"
+          }
+        },
+        {
+          "type": "alertmanager",
+          "config": {
+            "alertmanager_url": "https://maas-ng-iwg.services.sabio.co.uk:9093"
+          }
+        },
+        {
+          "type": "genesys",
+          "config": {
+            "region": "mypurecloud.com",
+            "client_id_env": "GENESYS_CLIENT_ID_IWG",
+            "client_secret_env": "GENESYS_CLIENT_SECRET_IWG"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Peoples Postcode Lottery",
+      "description": "Genesys Cloud customer",
+      "host": "maas-ng-postcodelottery.services.sabio.co.uk",
+      "has_genesys": true,
+      "mcp_servers": [
+        {
+          "type": "grafana",
+          "config": {
+            "grafana_url": "https://maas-ng-postcodelottery.services.sabio.co.uk",
+            "token_env": "GRAFANA_TOKEN_POSTCODELOTTERY"
+          }
+        },
+        {
+          "type": "alertmanager",
+          "config": {
+            "alertmanager_url": "https://maas-ng-postcodelottery.services.sabio.co.uk:9093"
+          }
+        },
+        {
+          "type": "genesys",
+          "config": {
+            "region": "mypurecloud.com",
+            "client_id_env": "GENESYS_CLIENT_ID_POSTCODELOTTERY",
+            "client_secret_env": "GENESYS_CLIENT_SECRET_POSTCODELOTTERY"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Segurcaixa",
+      "description": "Genesys Cloud customer",
+      "host": "maas-ng-segurcaixa.segurcaixa.services.sabio.co.uk",
+      "has_genesys": true,
+      "mcp_servers": [
+        {
+          "type": "grafana",
+          "config": {
+            "grafana_url": "https://maas-ng-segurcaixa.segurcaixa.services.sabio.co.uk",
+            "token_env": "GRAFANA_TOKEN_SEGURCAIXA"
+          }
+        },
+        {
+          "type": "alertmanager",
+          "config": {
+            "alertmanager_url": "https://maas-ng-segurcaixa.segurcaixa.services.sabio.co.uk:9093"
+          }
+        },
+        {
+          "type": "genesys",
+          "config": {
+            "region": "mypurecloud.com",
+            "client_id_env": "GENESYS_CLIENT_ID_SEGURCAIXA",
+            "client_secret_env": "GENESYS_CLIENT_SECRET_SEGURCAIXA"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vattenfall DE",
+      "description": "Genesys Cloud customer - Germany",
+      "host": "maas-ng-vattenfall.services.sabio.co.uk",
+      "has_genesys": true,
+      "mcp_servers": [
+        {
+          "type": "grafana",
+          "config": {
+            "grafana_url": "https://maas-ng-vattenfall.services.sabio.co.uk",
+            "token_env": "GRAFANA_TOKEN_VATTENFALL_DE"
+          }
+        },
+        {
+          "type": "alertmanager",
+          "config": {
+            "alertmanager_url": "https://maas-ng-vattenfall.services.sabio.co.uk:9093"
+          }
+        },
+        {
+          "type": "genesys",
+          "config": {
+            "region": "mypurecloud.de",
+            "client_id_env": "GENESYS_CLIENT_ID_VATTENFALL_DE",
+            "client_secret_env": "GENESYS_CLIENT_SECRET_VATTENFALL_DE"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vattenfall Sweden",
+      "description": "Genesys Cloud customer - Sweden",
+      "host": "maas-ng-vattenfall-se.services.sabio.co.uk",
+      "has_genesys": true,
+      "mcp_servers": [
+        {
+          "type": "grafana",
+          "config": {
+            "grafana_url": "https://maas-ng-vattenfall-se.services.sabio.co.uk",
+            "token_env": "GRAFANA_TOKEN_VATTENFALL_SE"
+          }
+        },
+        {
+          "type": "alertmanager",
+          "config": {
+            "alertmanager_url": "https://maas-ng-vattenfall-se.services.sabio.co.uk:9093"
+          }
+        },
+        {
+          "type": "genesys",
+          "config": {
+            "region": "mypurecloud.de",
+            "client_id_env": "GENESYS_CLIENT_ID_VATTENFALL_SE",
+            "client_secret_env": "GENESYS_CLIENT_SECRET_VATTENFALL_SE"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vattenfall Netherlands",
+      "description": "Genesys Cloud customer - Netherlands",
+      "host": "maas-ng-vattenfall-nl.services.sabio.co.uk",
+      "has_genesys": true,
+      "mcp_servers": [
+        {
+          "type": "grafana",
+          "config": {
+            "grafana_url": "https://maas-ng-vattenfall-nl.services.sabio.co.uk",
+            "token_env": "GRAFANA_TOKEN_VATTENFALL_NL"
+          }
+        },
+        {
+          "type": "alertmanager",
+          "config": {
+            "alertmanager_url": "https://maas-ng-vattenfall-nl.services.sabio.co.uk:9093"
+          }
+        },
+        {
+          "type": "genesys",
+          "config": {
+            "region": "mypurecloud.de",
+            "client_id_env": "GENESYS_CLIENT_ID_VATTENFALL_NL",
+            "client_secret_env": "GENESYS_CLIENT_SECRET_VATTENFALL_NL"
+          }
+        }
+      ]
+    }
+  ],
+  "default": "Vattenfall DE",
+  "container_settings": {
+    "max_warm_containers": 3,
+    "health_check_timeout_seconds": 30,
+    "health_check_interval_seconds": 2,
+    "container_startup_timeout_seconds": 60,
+    "network_name": "sm3-mcp-network",
+    "port_ranges": {
+      "grafana": {"start": 3100, "internal": 8888},
+      "alertmanager": {"start": 9100, "internal": 8080},
+      "genesys": {"start": 9200, "internal": 8080}
+    },
+    "images": {
+      "grafana": "grafana/mcp-grafana:latest",
+      "alertmanager": "sm3/alertmanager-mcp:latest",
+      "genesys": "sm3/genesys-mcp:latest"
+    }
+  }
+}

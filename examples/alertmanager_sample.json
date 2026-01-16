@@ -1,0 +1,41 @@
+﻿{
+  "version": "4",
+  "groupKey": "{alertname=\"LSP not Registered\"}",
+  "status": "firing",
+  "receiver": "sm3-agent",
+  "groupLabels": {
+    "alertname": "LSP not Registered"
+  },
+  "commonLabels": {
+    "alertname": "LSP not Registered",
+    "severity": "high",
+    "service": "avaya-acm",
+    "environment": "prod"
+  },
+  "commonAnnotations": {
+    "summary": "ACM LSP not registered",
+    "description": "Survivable processor registration has been missing for over 10 minutes."
+  },
+  "externalURL": "http://localhost:9093",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "LSP not Registered",
+        "severity": "high",
+        "service": "avaya-acm",
+        "environment": "prod",
+        "instance": "acm-01"
+      },
+      "annotations": {
+        "summary": "ACM LSP not registered",
+        "description": "Survivable processor registration has been missing for over 10 minutes.",
+        "runbook_url": "kb/Avaya Communication Manager (ACM) - LSP not Registered.txt"
+      },
+      "startsAt": "2025-01-12T10:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=acm_survivable_processor_registered",
+      "fingerprint": "kb-sample-lsp-not-registered"
+    }
+  ]
+}

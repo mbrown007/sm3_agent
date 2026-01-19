@@ -359,9 +359,9 @@
     "container_startup_timeout_seconds": 60,
     "network_name": "sm3-mcp-network",
     "port_ranges": {
-      "grafana": {"start": 3100, "internal": 8888},
-      "alertmanager": {"start": 9100, "internal": 8080},
-      "genesys": {"start": 9200, "internal": 8080}
+      "grafana": {"start": 3200, "internal": 8888},
+      "alertmanager": {"start": 9300, "internal": 8080},
+      "genesys": {"start": 9400, "internal": 8080}
     },
     "images": {
       "grafana": "grafana/mcp-grafana:latest",

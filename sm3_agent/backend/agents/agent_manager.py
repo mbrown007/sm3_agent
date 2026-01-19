@@ -17,7 +17,7 @@ from backend.containers import get_container_manager, ContainerState, DOCKER_AVA
 from backend.schemas.models import AgentResult
 from backend.tools.tool_wrappers import build_mcp_tools, build_mcp_tools_for_servers
 from backend.utils.logger import get_logger
-from backend.utils.prompts import SYSTEM_PROMPT
+from backend.utils.prompts import SYSTEM_PROMPT, build_system_prompt
 
 
 logger = get_logger(__name__)
@@ -57,11 +57,24 @@ class AgentManager:
         # Store separate memory for each session
         self.session_memories: Dict[str, ConversationBufferMemory] = {}
 
+        # Prompt will be built dynamically based on available MCPs
+        self.prompt = None
+        self._build_prompt([])
+
+    def _build_prompt(self, mcp_types: List[str]) -> None:
+        """
+        Build the agent prompt dynamically based on available MCP types.
+        
+        Args:
+            mcp_types: List of MCP type identifiers (e.g., ['grafana', 'genesys', 'alertmanager'])
+        """
+        system_prompt = build_system_prompt(mcp_types)
+        
         # Prompt for tool-calling agent (no ReAct text parsing)
         self.prompt = ChatPromptTemplate.from_messages([
             (
                 "system",
-                SYSTEM_PROMPT + (
+                system_prompt + (
                     "\n\n## CRITICAL: Tool Usage Rules"
                     "\n\n1. **NEVER call the same tool twice in a row with the same arguments**"
                     "\n2. **After a tool returns data, USE that data - don't re-call the tool**"
@@ -259,6 +272,10 @@ class AgentManager:
             )
             logger.info(f"Customer {customer_name} initialized with {len(self.tools)} tools")
             self._initialized = True
+            
+            # Rebuild prompt with customer's MCP types
+            self._build_prompt(connected_mcps)
+            logger.info(f"Rebuilt prompt with MCP types: {connected_mcps}")
             
             return CustomerSwitchResult(
                 success=True,

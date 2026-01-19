@@ -19,6 +19,9 @@ services:
     command: ["--transport", "streamable-http", "--address", "0.0.0.0:8888", "--debug"]
     ports:
       - "8888:8888"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     restart: unless-stopped
     networks:
       - sm3-network
@@ -29,6 +32,9 @@ services:
       context: ./sm3_agent
       dockerfile: Dockerfile
     container_name: grafana-agent-backend-dev
+    env_file:
+      - .env
+      - .env.mcp-credentials
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
@@ -41,11 +47,18 @@ services:
       - ALERT_ANALYSIS_DIR=/data/alert-analyses
     ports:
       - "8000:8000"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./sm3_agent/backend:/app/backend:ro
+      - ./sm3_agent/tests:/app/tests:ro
       - ./sm3_agent/mcp_servers.json:/app/mcp_servers.json:ro
       - ./kb:/data/kb:ro
       - ./alert-analyses:/data/alert-analyses
+      - /var/run/docker.sock:/var/run/docker.sock  # Allow container to manage Docker
     depends_on:
       - mcp-grafana
     restart: unless-stopped
@@ -59,7 +72,7 @@ services:
       dockerfile: Dockerfile
     container_name: grafana-agent-frontend-dev
     ports:
-      - "3100:3000"
+      - "3100:80"
     environment:
       - VITE_API_URL=http://localhost:8000
     depends_on:

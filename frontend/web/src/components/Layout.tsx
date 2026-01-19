@@ -1,8 +1,8 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { MessageSquare, Activity, Github, Server, ChevronDown, Check, Loader2, AlertCircle, Database, Phone, Monitor } from 'lucide-react';
+import { MessageSquare, Activity, Github, Server, ChevronDown, Check, Loader2, AlertCircle, Phone, Monitor } from 'lucide-react';
 import { customersApi, grafanaServersApi } from '@/services/api';
-import type { CustomerInfo, SwitchServerResponse } from '@/types';
+import type { CustomerInfo } from '@/types';
 
 interface LayoutProps {
   children: ReactNode;
@@ -20,6 +20,7 @@ export default function Layout({ children }: LayoutProps) {
   const [customers, setCustomers] = useState<CustomerInfo[]>([]);
   const [currentCustomer, setCurrentCustomer] = useState<string | null>(null);
   const [connectedMcps, setConnectedMcps] = useState<string[]>([]);
+  const [mcpHealth, setMcpHealth] = useState<Record<string, boolean>>({});
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -56,6 +57,11 @@ export default function Layout({ children }: LayoutProps) {
         const response = await customersApi.list();
         setCustomers(response.customers);
         setCurrentCustomer(response.current || response.default || null);
+        
+        // Load health for current customer
+        if (response.current || response.default) {
+          loadCustomerHealth(response.current || response.default!);
+        }
       } catch {
         // Fall back to legacy API
         const response = await grafanaServersApi.list();
@@ -74,6 +80,20 @@ export default function Layout({ children }: LayoutProps) {
     }
   };
 
+  const loadCustomerHealth = async (customerName: string) => {
+    try {
+      const health = await customersApi.getContainerHealth(customerName);
+      const healthMap: Record<string, boolean> = {};
+      health.containers.forEach(container => {
+        healthMap[container.mcp_type] = container.is_healthy;
+      });
+      setMcpHealth(healthMap);
+    } catch (error) {
+      console.error('Failed to load customer health:', error);
+      setMcpHealth({});
+    }
+  };
+
   const handleCustomerSwitch = async (customerName: string) => {
     if (customerName === currentCustomer || isSwitching) return;
     
@@ -88,6 +108,9 @@ export default function Layout({ children }: LayoutProps) {
         setCurrentCustomer(customerName);
         setConnectedMcps(response.connected_mcps || []);
         setSwitchProgress('');
+        
+        // Load health status
+        loadCustomerHealth(customerName);
         
         // Dispatch event for other components to know customer changed
         window.dispatchEvent(new CustomEvent('customerSwitch', { 
@@ -197,19 +220,19 @@ export default function Layout({ children }: LayoutProps) {
                   <span className="max-w-[150px] truncate">
                     {currentCustomerInfo?.name || 'Select Customer'}
                   </span>
-                  {/* Connected MCP indicators */}
+                  {/* Connected MCP indicators with health status */}
                   {connectedMcps.length > 0 && !isSwitching && (
                     <div className="flex gap-1 ml-1">
                       {connectedMcps.map(mcp => {
                         const config = mcpTypeConfig[mcp];
                         if (!config) return null;
                         const Icon = config.icon;
+                        const isHealthy = mcpHealth[mcp];
+                        const healthColor = isHealthy === true ? 'text-green-400' : isHealthy === false ? 'text-red-400' : config.color;
                         return (
-                          <Icon 
-                            key={mcp} 
-                            className={`w-3 h-3 ${config.color}`} 
-                            title={config.label}
-                          />
+                          <div key={mcp} title={`${config.label}${isHealthy !== undefined ? ` - ${isHealthy ? 'Healthy' : 'Unhealthy'}` : ''}`} className="relative">
+                            <Icon className={`w-3 h-3 ${healthColor}`} />
+                          </div>
                         );
                       })}
                     </div>
@@ -260,11 +283,9 @@ export default function Layout({ children }: LayoutProps) {
                                   if (!config) return null;
                                   const Icon = config.icon;
                                   return (
-                                    <Icon 
-                                      key={server.type} 
-                                      className={`w-3 h-3 ${config.color} opacity-60`} 
-                                      title={config.label}
-                                    />
+                                    <div key={server.type} title={config.label}>
+                                      <Icon className={`w-3 h-3 ${config.color} opacity-60`} />
+                                    </div>
                                   );
                                 })}
                               </div>

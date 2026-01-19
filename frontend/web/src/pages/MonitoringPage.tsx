@@ -70,7 +70,7 @@ export default function MonitoringPage() {
   });
 
   // Fetch datasources for current customer
-  const { data: datasources = [], isLoading: datasourcesLoading } = useQuery({
+  const { data: datasources = [] } = useQuery({
     queryKey: ['customer-datasources', currentCustomer],
     queryFn: () => currentCustomer ? nocMonitoringApi.getDatasources(currentCustomer) : Promise.resolve([]),
     enabled: !!currentCustomer,

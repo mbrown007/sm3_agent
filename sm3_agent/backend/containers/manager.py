@@ -62,7 +62,7 @@ class ContainerConfig:
     environment: Dict[str, str]
     port: int
     internal_port: int
-    health_endpoint: str = "/mcp"
+    health_endpoint: str = "/health"
     
     @property
     def container_name(self) -> str:
@@ -72,11 +72,13 @@ class ContainerConfig:
     
     @property
     def url(self) -> str:
-        """Get the MCP server URL."""
-        if self.mcp_type == MCPType.GRAFANA:
-            return f"http://localhost:{self.port}/mcp"
-        else:
-            return f"http://localhost:{self.port}/sse"
+        """Get the MCP server URL (for client connections via host.docker.internal)."""
+        return f"http://host.docker.internal:{self.port}/mcp"
+    
+    @property
+    def health_url(self) -> str:
+        """Get the health check URL (via host.docker.internal for Docker-to-Docker)."""
+        return f"http://host.docker.internal:{self.port}{self.health_endpoint}"
 
 
 @dataclass
@@ -95,6 +97,21 @@ class ContainerStatus:
         if self.started_at:
             return time.time() - self.started_at
         return 0
+    
+    @property
+    def container_name(self) -> str:
+        """Get container name from config."""
+        return self.config.container_name
+    
+    @property
+    def port(self) -> int:
+        """Get port from config."""
+        return self.config.port
+    
+    @property
+    def url(self) -> str:
+        """Get URL from config."""
+        return self.config.url
 
 
 @dataclass
@@ -279,7 +296,6 @@ class MCPContainerManager:
         
         elif mcp_type == MCPType.ALERTMANAGER:
             environment["ALERTMANAGER_URL"] = config.get("alertmanager_url", "")
-            environment["MCP_TRANSPORT"] = "sse"
         
         elif mcp_type == MCPType.GENESYS:
             environment["GENESYSCLOUD_REGION"] = config.get("region", "mypurecloud.com")
@@ -303,6 +319,11 @@ class MCPContainerManager:
         # Allocate port
         port = self._allocate_port(mcp_type, temp_config.container_name)
         
+        # Set health endpoint based on MCP type
+        health_endpoint = "/health"
+        if mcp_type == MCPType.GRAFANA:
+            health_endpoint = "/mcp"
+        
         return ContainerConfig(
             customer_name=customer_name,
             mcp_type=mcp_type,
@@ -310,6 +331,7 @@ class MCPContainerManager:
             environment=environment,
             port=port,
             internal_port=internal_port,
+            health_endpoint=health_endpoint,
         )
     
     async def _start_container(self, config: ContainerConfig) -> ContainerStatus:
@@ -342,12 +364,16 @@ class MCPContainerManager:
                 logger.info(f"Pulling image: {config.image}")
                 self.docker.images.pull(config.image)
             
-            # Build command based on MCP type
+            # Build command based on MCP type (use config.port for host network)
             command = None
             if config.mcp_type == MCPType.GRAFANA:
                 command = ["--transport", "streamable-http", "--address", f"0.0.0.0:{config.internal_port}"]
+            elif config.mcp_type == MCPType.ALERTMANAGER:
+                command = ["--transport", "http", "--port", str(config.internal_port)]
+            elif config.mcp_type == MCPType.GENESYS:
+                command = ["--transport", "http", "--port", str(config.internal_port)]
             
-            # Start container
+            # Start container with bridge network and DNS configured
             logger.info(
                 f"Starting container {config.container_name} "
                 f"(image={config.image}, port={config.port})"
@@ -359,8 +385,8 @@ class MCPContainerManager:
                 name=config.container_name,
                 detach=True,
                 environment=config.environment,
-                ports={f"{config.internal_port}/tcp": config.port},
-                network=self._network_name,
+                ports={f"{config.internal_port}/tcp": config.port},  # Expose port on host
+                dns=["8.8.8.8", "8.8.4.4"],  # Use Google DNS for external resolution
                 restart_policy={"Name": "unless-stopped"},
                 labels={
                     "sm3.managed": "true",
@@ -401,8 +427,7 @@ class MCPContainerManager:
                 # Try to connect to the health endpoint
                 import aiohttp
                 async with aiohttp.ClientSession() as session:
-                    url = status.config.url
-                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    async with session.get(status.config.health_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                         if resp.status in (200, 405):  # 405 = Method Not Allowed (but endpoint exists)
                             status.state = ContainerState.HEALTHY
                             logger.info(f"Container {status.config.container_name} is healthy")

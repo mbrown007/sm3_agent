@@ -161,10 +161,12 @@ export interface SwitchServerResponse {
 // Container health types
 export interface ContainerHealthStatus {
   mcp_type: string;
+  is_healthy: boolean;
   state: string;
-  container_id?: string;
+  container_name: string;
+  port?: number;
+  url: string;
   error_message?: string;
-  uptime_seconds?: number;
 }
 
 export interface CustomerContainersHealth {

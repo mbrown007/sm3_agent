@@ -6,6 +6,7 @@ from backend.app.mcp_servers import get_mcp_server_manager
 from backend.agents.agent_manager import AgentManager
 from backend.agents.proactive import create_default_targets, get_proactive_monitor
 from backend.agents.customer_monitoring import get_customer_monitoring_manager
+from backend.containers import get_container_manager, ContainerState, DOCKER_AVAILABLE
 from backend.api.monitoring import router as monitoring_router
 from backend.api.monitoring_v2 import router as monitoring_v2_router
 from backend.api.alerts import router as alerts_router
@@ -441,6 +442,68 @@ async def switch_customer(request: SwitchCustomerRequest) -> SwitchServerRespons
             success=False,
             server_name=request.customer_name,
             message=f"Error: {str(e)}"
+        )
+
+
+@app.get("/api/customers/{customer_name}/health", response_model=CustomerContainersHealth)
+async def get_customer_health(customer_name: str) -> CustomerContainersHealth:
+    """
+    Get health status of all MCP containers for a customer.
+    
+    Args:
+        customer_name: Name of the customer
+        
+    Returns:
+        Health status of all containers
+    """
+    if not DOCKER_AVAILABLE:
+        return CustomerContainersHealth(
+            customer_name=customer_name,
+            all_healthy=False,
+            containers=[]
+        )
+    
+    try:
+        container_manager = get_container_manager()
+        customer_status = container_manager.get_customer_status(customer_name)
+        
+        if not customer_status:
+            return CustomerContainersHealth(
+                customer_name=customer_name,
+                all_healthy=False,
+                containers=[]
+            )
+        
+        containers = []
+        all_healthy = True
+        
+        for mcp_type, status in customer_status.containers.items():
+            is_healthy = status.state == ContainerState.HEALTHY
+            if not is_healthy:
+                all_healthy = False
+                
+            containers.append(ContainerHealthStatus(
+                mcp_type=mcp_type.value,
+                is_healthy=is_healthy,
+                state=status.state.value,
+                container_name=status.container_name or "",
+                port=status.port,
+                url=status.url or "",
+                error_message=status.error_message
+            ))
+        
+        return CustomerContainersHealth(
+            customer_name=customer_name,
+            all_healthy=all_healthy,
+            containers=containers
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting customer health for {customer_name}: {e}")
+        return CustomerContainersHealth(
+            customer_name=customer_name,
+            all_healthy=False,
+            containers=[]
         )
 
 

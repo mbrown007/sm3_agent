@@ -14,10 +14,10 @@ import type {
   CustomerContainersHealth,
   CustomersResponse,
   NOCOverview,
-  CustomerHealth,
   Datasource,
   CustomerMonitoringTarget,
-  CustomerAlert
+  CustomerAlert,
+  WebhookStatusResponse
 } from '@/types';
 
 const api = axios.create({
@@ -216,7 +216,7 @@ export const customersApi = {
   },
 
   getContainerHealth: async (customerName: string): Promise<CustomerContainersHealth> => {
-    const response = await api.get<CustomerContainersHealth>(`/api/containers/health/${customerName}`);
+    const response = await api.get<CustomerContainersHealth>(`/api/customers/${customerName}/health`);
     return response.data;
   },
 };
@@ -293,13 +293,13 @@ export const nocMonitoringApi = {
     await api.delete(`/monitoring/targets/${customerName}/${targetName}`);
   },
 
-  enableTarget: async (customerName: string, targetName: string): Promise<{ status: string }> => {
-    const response = await api.patch(`/monitoring/targets/${customerName}/${targetName}/enable`);
+  enableTarget: async (customerName: string, targetName: string): Promise<MonitoringTarget> => {
+    const response = await api.patch<MonitoringTarget>(`/monitoring/targets/${customerName}/${targetName}/enable`);
     return response.data;
   },
 
-  disableTarget: async (customerName: string, targetName: string): Promise<{ status: string }> => {
-    const response = await api.patch(`/monitoring/targets/${customerName}/${targetName}/disable`);
+  disableTarget: async (customerName: string, targetName: string): Promise<MonitoringTarget> => {
+    const response = await api.patch<MonitoringTarget>(`/monitoring/targets/${customerName}/${targetName}/disable`);
     return response.data;
   },
 

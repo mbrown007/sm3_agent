@@ -40,6 +40,9 @@ server_manager = get_mcp_server_manager()
 # Store MCP client in app state
 mcp_client_instance = None
 
+# Background task handle for idle cleanup
+_idle_cleanup_task: Optional[asyncio.Task] = None
+
 app = FastAPI(
     title="Grafana MCP Chat API",
     version="0.2.0",
@@ -65,6 +68,8 @@ app.include_router(mcp_router)
 @app.on_event("startup")
 async def startup_event():
     """Initialize agent and proactive monitoring on startup."""
+    global _idle_cleanup_task
+    
     logger.info("Starting Grafana MCP Chat API v0.2.0")
     logger.info(f"CORS origins: {settings.cors_origins}")
     logger.info(f"MCP server URL: {settings.mcp_server_url}")
@@ -82,6 +87,11 @@ async def startup_event():
     # Initialize agent
     await agent_manager.initialize()
     logger.info("Agent initialized successfully")
+
+    # Start idle container cleanup background task
+    if DOCKER_AVAILABLE:
+        _idle_cleanup_task = asyncio.create_task(_idle_cleanup_loop())
+        logger.info("Started idle container cleanup background task (30 min timeout)")
 
     # Initialize proactive monitoring (but don't start it yet)
     try:
@@ -103,6 +113,46 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Proactive monitoring initialization failed: {e}")
         logger.warning("Proactive monitoring will not be available")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown."""
+    global _idle_cleanup_task
+    
+    # Cancel idle cleanup task
+    if _idle_cleanup_task:
+        _idle_cleanup_task.cancel()
+        try:
+            await _idle_cleanup_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Stopped idle cleanup background task")
+
+
+async def _idle_cleanup_loop():
+    """Background task to periodically clean up idle containers."""
+    # Wait a bit before first check
+    await asyncio.sleep(60)
+    
+    while True:
+        try:
+            container_manager = get_container_manager()
+            result = await container_manager.cleanup_idle_containers()
+            
+            if result["removed_count"] > 0:
+                logger.info(
+                    f"Idle cleanup: removed {result['removed_count']} customer(s): "
+                    f"{result['removed_customers']}"
+                )
+            else:
+                logger.debug("Idle cleanup: no idle containers to remove")
+                
+        except Exception as e:
+            logger.error(f"Error in idle cleanup task: {e}")
+        
+        # Check every 5 minutes
+        await asyncio.sleep(300)
 
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -749,5 +799,69 @@ async def cleanup_orphaned_containers():
         return {
             "success": False,
             "removed_count": 0,
+            "error": str(e)
+        }
+
+
+@app.post("/api/containers/cleanup-idle")
+async def cleanup_idle_containers():
+    """
+    Clean up containers that have been idle for longer than the timeout.
+    
+    Returns:
+        List of customers whose containers were removed
+    """
+    try:
+        if not DOCKER_AVAILABLE:
+            return {
+                "success": False,
+                "removed_customers": [],
+                "error": "Docker SDK not available"
+            }
+        
+        container_manager = get_container_manager()
+        result = await container_manager.cleanup_idle_containers()
+        
+        return {
+            "success": True,
+            **result
+        }
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up idle containers: {e}")
+        return {
+            "success": False,
+            "removed_customers": [],
+            "error": str(e)
+        }
+
+
+@app.get("/api/containers/idle-status")
+async def get_idle_status():
+    """
+    Get idle status for all active customer containers.
+    
+    Returns:
+        Idle time and cleanup countdown for each customer
+    """
+    try:
+        if not DOCKER_AVAILABLE:
+            return {
+                "success": False,
+                "error": "Docker SDK not available"
+            }
+        
+        container_manager = get_container_manager()
+        status = container_manager.get_idle_status()
+        
+        return {
+            "success": True,
+            **status
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting idle status: {e}")
+        return {
+            "success": False,
             "error": str(e)
         }

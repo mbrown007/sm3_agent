@@ -166,6 +166,7 @@ class MCPContainerManager:
         self._health_timeout: int = 30
         self._health_interval: int = 2
         self._startup_timeout: int = 60
+        self._idle_timeout: int = 1800  # 30 minutes default
         
         # Port allocations (track which ports are in use)
         self._port_allocations: Dict[str, int] = {}  # container_name -> port
@@ -192,6 +193,7 @@ class MCPContainerManager:
         health_timeout: int = 30,
         health_interval: int = 2,
         startup_timeout: int = 60,
+        idle_timeout: int = 1800,
         port_ranges: Optional[Dict[str, Dict[str, int]]] = None,
         images: Optional[Dict[str, str]] = None,
     ) -> None:
@@ -201,6 +203,7 @@ class MCPContainerManager:
         self._health_timeout = health_timeout
         self._health_interval = health_interval
         self._startup_timeout = startup_timeout
+        self._idle_timeout = idle_timeout
         
         if port_ranges:
             for type_name, ports in port_ranges.items():
@@ -609,6 +612,67 @@ class MCPContainerManager:
             logger.error(f"Error cleaning up orphaned containers: {e}")
         
         return removed
+
+    async def cleanup_idle_containers(self, idle_timeout: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Clean up containers that have been idle for longer than the timeout.
+        
+        Args:
+            idle_timeout: Override idle timeout in seconds (default: self._idle_timeout)
+            
+        Returns:
+            Dict with cleanup results
+        """
+        timeout = idle_timeout or self._idle_timeout
+        now = time.time()
+        removed_customers = []
+        
+        # Find idle customers
+        idle_customers = []
+        for customer_name, customer in self._customers.items():
+            idle_seconds = now - customer.last_accessed
+            if idle_seconds > timeout:
+                idle_customers.append((customer_name, idle_seconds))
+        
+        # Remove idle customers
+        for customer_name, idle_seconds in idle_customers:
+            idle_minutes = idle_seconds / 60
+            logger.info(
+                f"Cleaning up idle containers for {customer_name} "
+                f"(idle for {idle_minutes:.1f} minutes)"
+            )
+            await self.stop_customer_containers(customer_name)
+            removed_customers.append(customer_name)
+        
+        return {
+            "removed_customers": removed_customers,
+            "removed_count": len(removed_customers),
+            "idle_timeout_seconds": timeout,
+            "remaining_customers": list(self._customers.keys()),
+        }
+    
+    def update_customer_activity(self, customer_name: str) -> None:
+        """Update the last activity time for a customer."""
+        if customer_name in self._customers:
+            self._customers[customer_name].update_access_time()
+            logger.debug(f"Updated activity time for {customer_name}")
+    
+    def get_idle_status(self) -> Dict[str, Any]:
+        """Get idle status for all customers."""
+        now = time.time()
+        status = {}
+        for customer_name, customer in self._customers.items():
+            idle_seconds = now - customer.last_accessed
+            status[customer_name] = {
+                "idle_seconds": idle_seconds,
+                "idle_minutes": idle_seconds / 60,
+                "will_cleanup_in_seconds": max(0, self._idle_timeout - idle_seconds),
+            }
+        return {
+            "customers": status,
+            "idle_timeout_seconds": self._idle_timeout,
+            "idle_timeout_minutes": self._idle_timeout / 60,
+        }
 
 
 # Singleton accessor

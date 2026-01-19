@@ -210,6 +210,7 @@ class AgentManager:
                     health_timeout=cs.health_check_timeout_seconds,
                     health_interval=cs.health_check_interval_seconds,
                     startup_timeout=cs.container_startup_timeout_seconds,
+                    idle_timeout=cs.idle_timeout_seconds,
                     port_ranges=cs.port_ranges,
                     images=cs.images,
                 )
@@ -462,6 +463,14 @@ class AgentManager:
         # Use a default session if none provided
         if session_id is None:
             session_id = "default"
+
+        # Update container activity time (for idle cleanup)
+        if self._current_server_name and DOCKER_AVAILABLE:
+            try:
+                container_manager = get_container_manager()
+                container_manager.update_customer_activity(self._current_server_name)
+            except Exception as e:
+                logger.debug(f"Failed to update activity time: {e}")
 
         # Get session-specific memory
         memory = self.get_or_create_memory(session_id)

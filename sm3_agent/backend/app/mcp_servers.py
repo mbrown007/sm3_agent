@@ -42,6 +42,7 @@ class ContainerSettings:
     health_check_timeout_seconds: int = 30
     health_check_interval_seconds: int = 2
     container_startup_timeout_seconds: int = 60
+    idle_timeout_seconds: int = 1800  # 30 minutes default
     network_name: str = "sm3-mcp-network"
     port_ranges: Dict[str, Dict[str, int]] = field(default_factory=dict)
     images: Dict[str, str] = field(default_factory=dict)
@@ -204,6 +205,7 @@ class MCPServerManager:
                 health_check_timeout_seconds=cs.get("health_check_timeout_seconds", 30),
                 health_check_interval_seconds=cs.get("health_check_interval_seconds", 2),
                 container_startup_timeout_seconds=cs.get("container_startup_timeout_seconds", 60),
+                idle_timeout_seconds=cs.get("idle_timeout_seconds", 1800),
                 network_name=cs.get("network_name", "sm3-mcp-network"),
                 port_ranges=cs.get("port_ranges", {}),
                 images=cs.get("images", {})

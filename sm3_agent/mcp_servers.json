@@ -358,6 +358,13 @@
     "health_check_interval_seconds": 2,
     "container_startup_timeout_seconds": 60,
     "idle_timeout_seconds": 1800,
+    "network_name": "sm3-mcp-network",
+    "port_ranges": {
+      "grafana": {"start": 3200, "internal": 8888},
+      "alertmanager": {"start": 9300, "internal": 8080},
+      "genesys": {"start": 9400, "internal": 8080}
+    },
+    "images": {
       "grafana": "grafana/mcp-grafana:latest",
       "alertmanager": "sm3/alertmanager-mcp:latest",
       "genesys": "sm3/genesys-mcp:latest"

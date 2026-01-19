@@ -169,7 +169,7 @@
         {
           "type": "genesys",
           "config": {
-            "region": "mypurecloud.de",
+            "region": "mypurecloud.ie",
             "client_id_env": "GENESYS_CLIENT_ID_ESSENT",
             "client_secret_env": "GENESYS_CLIENT_SECRET_ESSENT"
           }
@@ -256,7 +256,7 @@
         {
           "type": "genesys",
           "config": {
-            "region": "mypurecloud.com",
+            "region": "mypurecloud.ie",
             "client_id_env": "GENESYS_CLIENT_ID_SEGURCAIXA",
             "client_secret_env": "GENESYS_CLIENT_SECRET_SEGURCAIXA"
           }
@@ -314,7 +314,7 @@
         {
           "type": "genesys",
           "config": {
-            "region": "mypurecloud.de",
+            "region": "mypurecloud.ie",
             "client_id_env": "GENESYS_CLIENT_ID_VATTENFALL_SE",
             "client_secret_env": "GENESYS_CLIENT_SECRET_VATTENFALL_SE"
           }
@@ -343,7 +343,7 @@
         {
           "type": "genesys",
           "config": {
-            "region": "mypurecloud.de",
+            "region": "mypurecloud.ie",
             "client_id_env": "GENESYS_CLIENT_ID_VATTENFALL_NL",
             "client_secret_env": "GENESYS_CLIENT_SECRET_VATTENFALL_NL"
           }
@@ -370,3 +370,5 @@
     }
   }
 }
+
+

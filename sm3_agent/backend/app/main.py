@@ -445,6 +445,66 @@ async def switch_customer(request: SwitchCustomerRequest) -> SwitchServerRespons
         )
 
 
+@app.post("/api/customers/reconnect", response_model=SwitchServerResponse)
+async def reconnect_customer() -> SwitchServerResponse:
+    """
+    Reconnect to the current customer's MCP servers.
+    
+    This restarts containers for the current customer without switching.
+    Useful when containers have failed or need to be refreshed.
+    
+    Returns:
+        Success status with connected MCP types and tool count
+    """
+    current_customer_name = agent_manager.get_current_server_name()
+    
+    if not current_customer_name:
+        return SwitchServerResponse(
+            success=False,
+            server_name="",
+            message="No customer currently selected"
+        )
+    
+    customer = server_manager.get_customer(current_customer_name)
+    
+    if not customer:
+        return SwitchServerResponse(
+            success=False,
+            server_name=current_customer_name,
+            message=f"Unknown customer: {current_customer_name}"
+        )
+    
+    try:
+        # Force rebuild by switching to the same customer
+        result = await agent_manager.switch_customer(current_customer_name, force_restart=True)
+        grafana_server = customer.get_server_by_type("grafana")
+        
+        logger.info(
+            f"Reconnect customer {current_customer_name}: success={result.success}, "
+            f"connected={result.connected_mcps}, failed={result.failed_mcps}, tools={result.tool_count}"
+        )
+        
+        return SwitchServerResponse(
+            success=result.success,
+            server_name=current_customer_name,
+            server_url=grafana_server.url if grafana_server else None,
+            message=result.message,
+            mcp_server_count=len(customer.mcp_servers),
+            connected_mcps=result.connected_mcps,
+            failed_mcps=result.failed_mcps,
+            tool_count=result.tool_count,
+            is_starting=result.is_starting
+        )
+            
+    except Exception as e:
+        logger.error(f"Error reconnecting customer: {e}", exc_info=True)
+        return SwitchServerResponse(
+            success=False,
+            server_name=current_customer_name,
+            message=f"Error: {str(e)}"
+        )
+
+
 @app.get("/api/customers/{customer_name}/health", response_model=CustomerContainersHealth)
 async def get_customer_health(customer_name: str) -> CustomerContainersHealth:
     """

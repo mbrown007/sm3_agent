@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { MessageSquare, Activity, Github, Server, ChevronDown, Check, Loader2, AlertCircle, Phone, Monitor } from 'lucide-react';
+import { MessageSquare, Activity, Github, Server, ChevronDown, Check, Loader2, AlertCircle, Phone, Monitor, RefreshCw } from 'lucide-react';
 import { customersApi, grafanaServersApi } from '@/services/api';
 import type { CustomerInfo } from '@/types';
 
@@ -128,6 +128,44 @@ export default function Layout({ children }: LayoutProps) {
     } catch (error) {
       console.error('Error switching customer:', error);
       setSwitchProgress('Connection failed');
+      setTimeout(() => setSwitchProgress(''), 3000);
+    } finally {
+      setIsSwitching(false);
+    }
+  };
+
+  const handleReconnect = async () => {
+    if (!currentCustomer || isSwitching) return;
+    
+    try {
+      setIsSwitching(true);
+      setSwitchProgress('Reconnecting...');
+      
+      const response = await customersApi.reconnect();
+      
+      if (response.success) {
+        setConnectedMcps(response.connected_mcps || []);
+        setSwitchProgress('');
+        
+        // Load health status
+        loadCustomerHealth(currentCustomer);
+        
+        // Dispatch event for other components to know customer reconnected
+        window.dispatchEvent(new CustomEvent('customerSwitch', { 
+          detail: { 
+            customer: currentCustomer, 
+            connectedMcps: response.connected_mcps,
+            toolCount: response.tool_count 
+          } 
+        }));
+      } else {
+        console.error('Failed to reconnect:', response.message);
+        setSwitchProgress(`Error: ${response.message}`);
+        setTimeout(() => setSwitchProgress(''), 3000);
+      }
+    } catch (error) {
+      console.error('Error reconnecting:', error);
+      setSwitchProgress('Reconnect failed');
       setTimeout(() => setSwitchProgress(''), 3000);
     } finally {
       setIsSwitching(false);
@@ -300,6 +338,18 @@ export default function Layout({ children }: LayoutProps) {
                   </>
                 )}
               </div>
+            )}
+
+            {/* Reconnect Button */}
+            {currentCustomer && (
+              <button
+                onClick={handleReconnect}
+                disabled={isSwitching}
+                title="Reconnect MCP containers"
+                className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors border border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw className={`w-4 h-4 text-gray-400 ${isSwitching ? 'animate-spin' : ''}`} />
+              </button>
             )}
 
             <a

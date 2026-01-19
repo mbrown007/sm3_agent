@@ -146,7 +146,7 @@ class AgentManager:
         result = await self.switch_customer(server_name)
         return result.success
     
-    async def switch_customer(self, customer_name: str, use_containers: bool = True) -> CustomerSwitchResult:
+    async def switch_customer(self, customer_name: str, use_containers: bool = True, force_restart: bool = False) -> CustomerSwitchResult:
         """
         Switch to a different customer, activating ALL their MCP servers.
 
@@ -156,6 +156,7 @@ class AgentManager:
         Args:
             customer_name: Name of the customer from mcp_servers.json
             use_containers: Whether to use dynamic container management (default True)
+            force_restart: Force restart containers even if switching to same customer (for reconnect)
 
         Returns:
             CustomerSwitchResult with status of the switch
@@ -173,6 +174,15 @@ class AgentManager:
                 failed_mcps=[],
                 tool_count=0
             )
+        
+        # If force_restart, stop existing containers first
+        if force_restart and use_containers and DOCKER_AVAILABLE:
+            try:
+                container_manager = get_container_manager()
+                logger.info(f"Force restarting containers for {customer_name}")
+                await container_manager.stop_customer_containers(customer_name)
+            except Exception as e:
+                logger.warning(f"Error stopping containers during force restart: {e}")
         
         logger.info(
             f"Switching to customer: {customer_name} with {len(customer.mcp_servers)} MCP server(s)",

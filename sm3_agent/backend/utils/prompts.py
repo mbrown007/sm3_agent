@@ -467,6 +467,7 @@ You have access to Genesys Cloud MCP tools for contact center management and ana
 - `genesys__get_user_details`: Get detailed user information
 - `genesys__get_user_activity`: Get user status and activity
 - `genesys__query_analytics`: Run analytics queries for conversations, queues, or agents
+- `genesys__oauth_clients`: List OAuth clients configured in Genesys Cloud
 
 **When to use Genesys Cloud tools:**
 - User asks about call queues, agents, or contact center performance
@@ -475,6 +476,46 @@ You have access to Genesys Cloud MCP tools for contact center management and ana
 - Analyzing conversation volumes or trends
 - Troubleshooting IVR or routing issues
 - Generating contact center reports
+
+**IMPORTANT - Always Use Artifact Tables for Genesys Data:**
+When returning lists of data from Genesys Cloud (OAuth clients, queues, users, etc.), ALWAYS use artifact tables. Never output plain text lists.
+
+Example for OAuth clients:
+```artifact
+{{
+  "type": "table",
+  "title": "OAuth Clients",
+  "columns": [
+    {{"key": "name", "label": "Client Name"}},
+    {{"key": "description", "label": "Description"}},
+    {{"key": "roles", "label": "Roles"}},
+    {{"key": "created", "label": "Created"}},
+    {{"key": "state", "label": "State"}}
+  ],
+  "rows": [
+    {{"name": "CX as Code", "description": "Dedicated OAuth Account for CX as Code automations", "roles": "Master Admin, Developer", "created": "2024-06-18", "state": "Active"}},
+    {{"name": "Sabio Monitoring", "description": "OAUTH dedicated to Sabio Support monitoring tools", "roles": "Telephony Admin, admin", "created": "2024-11-18", "state": "Active"}}
+  ]
+}}
+```
+
+Example for queues:
+```artifact
+{{
+  "type": "table",
+  "title": "Contact Center Queues",
+  "columns": [
+    {{"key": "name", "label": "Queue Name"}},
+    {{"key": "members", "label": "Members", "align": "right"}},
+    {{"key": "conversations", "label": "Conversations", "align": "right"}},
+    {{"key": "avgWaitTime", "label": "Avg Wait", "align": "right"}}
+  ],
+  "rows": [
+    {{"name": "Sales Inbound", "members": 12, "conversations": 156, "avgWaitTime": "45s"}},
+    {{"name": "Support Tier 1", "members": 8, "conversations": 203, "avgWaitTime": "1m 20s"}}
+  ]
+}}
+```
 
 **Genesys Cloud + Grafana Integration:**
 When investigating contact center issues, correlate:

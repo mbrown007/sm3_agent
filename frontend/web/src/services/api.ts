@@ -215,6 +215,11 @@ export const customersApi = {
     return response.data;
   },
 
+  reconnect: async (): Promise<SwitchServerResponse> => {
+    const response = await api.post<SwitchServerResponse>('/api/customers/reconnect');
+    return response.data;
+  },
+
   getContainerHealth: async (customerName: string): Promise<CustomerContainersHealth> => {
     const response = await api.get<CustomerContainersHealth>(`/api/customers/${customerName}/health`);
     return response.data;

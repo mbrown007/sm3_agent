@@ -29,7 +29,7 @@ import type { CustomerHealth, CustomerWebhookStatus } from '@/types';
 function StatusBadge({ status }: { status: string }) {
   const config = {
     healthy: { icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10', label: 'Healthy' },
-    warning: { icon: AlertTriangle, color: 'text-yellow-500', bg: 'bg-yellow-500/10', label: 'Warning' },
+    warning: { icon: AlertTriangle, color: 'text-yellow-500', bg: 'bg-yellow-500/10', label: 'Major' },
     critical: { icon: XCircle, color: 'text-red-500', bg: 'bg-red-500/10', label: 'Critical' },
     unknown: { icon: HelpCircle, color: 'text-gray-500', bg: 'bg-gray-500/10', label: 'Unknown' },
   }[status] || { icon: HelpCircle, color: 'text-gray-500', bg: 'bg-gray-500/10', label: status };
@@ -343,7 +343,7 @@ export default function NocOverviewPage() {
             onClick={() => setFilter('critical')}
           />
           <SummaryCard
-            title="Warning"
+            title="Major"
             value={overview?.warning_count || 0}
             icon={AlertTriangle}
             color="text-yellow-400"
@@ -370,6 +370,7 @@ export default function NocOverviewPage() {
           {(['all', 'critical', 'warning', 'healthy', 'unknown'] as const).map((f) => {
             const countKey = `${f}_count` as 'critical_count' | 'warning_count' | 'healthy_count' | 'unknown_count';
             const count = f !== 'all' && overview ? (overview[countKey] as number) || 0 : 0;
+            const label = f === 'warning' ? 'Major' : f.charAt(0).toUpperCase() + f.slice(1);
             
             return (
               <button
@@ -380,7 +381,7 @@ export default function NocOverviewPage() {
                     ? 'bg-blue-500 text-white' 
                     : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
               >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+                {label}
                 {f !== 'all' && (
                   <span className="ml-2 px-1.5 py-0.5 rounded bg-gray-700 text-xs">
                     {count}

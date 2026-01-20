@@ -140,10 +140,51 @@ async def get_noc_overview():
     Get NOC dashboard overview showing all customers' health status.
     
     Returns aggregate counts and per-customer health for dashboard display.
+    Shows all configured customers, not just those actively monitored.
     """
     try:
+        from backend.app.mcp_servers import get_mcp_server_manager
+        from backend.services.webhook_manager import get_webhook_manager
+        
         manager = get_customer_monitoring_manager()
-        health_list = manager.get_all_customer_health()
+        server_manager = get_mcp_server_manager()
+        webhook_manager = get_webhook_manager()
+        
+        # Get all configured customers
+        all_customer_names = server_manager.get_customer_names()
+        
+        # Get monitoring health for customers that have monitoring state
+        health_dict = {h.customer_name: h for h in manager.get_all_customer_health()}
+        
+        # Build health list for ALL customers
+        health_list = []
+        for name in all_customer_names:
+            if name in health_dict:
+                # Use existing health data
+                health_list.append(health_dict[name])
+            else:
+                # Create default health entry for unconfigured customer
+                # Check webhook status for any received alerts
+                webhook = webhook_manager.get_webhook(name)
+                has_alerts = webhook.total_alerts_received > 0 if webhook else False
+                
+                health_list.append(CustomerHealth(
+                    customer_name=name,
+                    is_monitoring=False,
+                    targets_count=0,
+                    enabled_targets=0,
+                    total_alerts=webhook.total_alerts_received if webhook else 0,
+                    critical_alerts=0,
+                    warning_alerts=0,
+                    last_check=webhook.last_alert_received if webhook else None,
+                    status="unknown"
+                ))
+        
+        # Sort: critical first, then warning, then healthy, then unknown
+        health_list = sorted(health_list, key=lambda h: (
+            {"critical": 0, "warning": 1, "healthy": 2, "unknown": 3}.get(h.status, 4),
+            h.customer_name
+        ))
         
         healthy = sum(1 for h in health_list if h.status == "healthy")
         warning = sum(1 for h in health_list if h.status == "warning")

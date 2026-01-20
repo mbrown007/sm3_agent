@@ -205,13 +205,14 @@ route:
             import httpx
             
             # Try to reach AlertManager status endpoint
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
                 # AlertManager API v2 status endpoint
                 url = f"{webhook.alertmanager_url}/api/v2/status"
                 response = await client.get(url)
                 
+                webhook.last_check = datetime.utcnow()
+                
                 if response.status_code == 200:
-                    webhook.last_check = datetime.utcnow()
                     # If we've received alerts, it's configured
                     is_configured = webhook.total_alerts_received > 0
                     webhook.status = WebhookStatus.CONFIGURED if is_configured else WebhookStatus.PENDING
@@ -221,6 +222,19 @@ route:
                         is_valid=True,
                         alertmanager_reachable=True,
                         webhook_configured=is_configured
+                    )
+                elif response.status_code in (401, 403):
+                    # Auth required - AlertManager is reachable but we can't access API directly
+                    # This is OK - the webhook works in the opposite direction (AM calls us)
+                    is_configured = webhook.total_alerts_received > 0
+                    webhook.status = WebhookStatus.CONFIGURED if is_configured else WebhookStatus.PENDING
+                    
+                    return WebhookValidationResult(
+                        customer_name=customer_name,
+                        is_valid=True,
+                        alertmanager_reachable=True,
+                        webhook_configured=is_configured,
+                        error=f"AlertManager reachable (auth required for API access)"
                     )
                 else:
                     webhook.status = WebhookStatus.ERROR

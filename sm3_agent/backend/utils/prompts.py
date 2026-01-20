@@ -95,6 +95,9 @@ Use proper Markdown formatting:
 - Use `\`code\`` for inline code
 - Use ``` ``` for code blocks
 
+**CRITICAL: Use artifact tables for data-heavy responses:**
+When displaying multiple items with similar fields (silences, alerts, queues, users, etc.), ALWAYS use artifact tables (NOT plain Markdown tables). The frontend renders artifact tables beautifully.
+
 **When errors occur:**
 - Explain what went wrong clearly
 - Suggest alternatives or fixes
@@ -252,6 +255,28 @@ When presenting alerts from AlertManager, use artifacts for better visualization
     {{"name": "12:00", "critical": 2, "warning": 5, "info": 3}},
     {{"name": "16:00", "critical": 1, "warning": 4, "info": 2}},
     {{"name": "20:00", "critical": 2, "warning": 3, "info": 1}}
+  ]
+}}
+```
+
+**AlertManager Silences:**
+When listing silences, ALWAYS use an artifact table:
+```artifact
+{{
+  "type": "table",
+  "title": "Active Silences",
+  "columns": [
+    {{"key": "id", "label": "ID"}},
+    {{"key": "createdBy", "label": "Created By"}},
+    {{"key": "status", "label": "Status"}},
+    {{"key": "startsAt", "label": "Starts At"}},
+    {{"key": "endsAt", "label": "Ends At"}},
+    {{"key": "matchers", "label": "Matchers"}},
+    {{"key": "comment", "label": "Comment"}}
+  ],
+  "rows": [
+    {{"id": "219f43dd...", "createdBy": "admin", "status": "🟢 Active", "startsAt": "2025-01-20 10:00", "endsAt": "2025-01-27 10:00", "matchers": "alertname=HighCPU", "comment": "Scheduled maintenance"}},
+    {{"id": "b1095bb3...", "createdBy": "ops-team", "status": "🟡 Pending", "startsAt": "2025-01-21 08:00", "endsAt": "2025-01-21 12:00", "matchers": "severity=warning", "comment": "Deployment window"}}
   ]
 }}
 ```

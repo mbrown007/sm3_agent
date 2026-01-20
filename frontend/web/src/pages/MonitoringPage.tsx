@@ -863,8 +863,8 @@ receivers:
 route:
   receiver: 'sm3-webhook'
   routes:
-    - match:
-        severity: critical
+    - match_re:
+        severity: critical|major
       receiver: 'sm3-webhook'
       continue: true`}
                       </pre>

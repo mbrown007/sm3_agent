@@ -112,8 +112,8 @@ route:
   receiver: 'sm3-webhook'
   # Or add it as a sub-route for specific alerts
   routes:
-    - match:
-        severity: critical
+    - match_re:
+        severity: critical|major
       receiver: 'sm3-webhook'
       continue: true
 """

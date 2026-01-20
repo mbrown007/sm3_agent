@@ -17,7 +17,11 @@ import type {
   Datasource,
   CustomerMonitoringTarget,
   CustomerAlert,
-  WebhookStatusResponse
+  WebhookStatusResponse,
+  AllWebhooksResponse,
+  WebhookConfigDetail,
+  WebhookValidation,
+  WebhookStatusSummary
 } from '@/types';
 
 const api = axios.create({
@@ -130,6 +134,13 @@ export const monitoringApi = {
     });
     return response.data;
   },
+
+  getAnalysesForCustomer: async (customerName: string): Promise<{ count: number; analyses: AlertAnalysisSummary[] }> => {
+    const response = await api.get<{ count: number; analyses: AlertAnalysisSummary[] }>(
+      `/api/alerts/analyses/${customerName}`
+    );
+    return response.data;
+  },
 };
 
 // Alert Analysis API
@@ -137,6 +148,13 @@ export const alertsApi = {
   getAnalyses: async (): Promise<{ count: number; analyses: AlertAnalysisSummary[] }> => {
     const response = await api.get<{ count: number; analyses: AlertAnalysisSummary[] }>(
       '/api/alerts/analyses'
+    );
+    return response.data;
+  },
+
+  getAnalysesForCustomer: async (customerName: string): Promise<{ count: number; analyses: AlertAnalysisSummary[] }> => {
+    const response = await api.get<{ count: number; analyses: AlertAnalysisSummary[] }>(
+      `/api/alerts/analyses/customer/${customerName}`
     );
     return response.data;
   },
@@ -186,6 +204,44 @@ export const healthApi = {
   },
 };
 
+// Webhook Management API
+export const webhooksApi = {
+  getAll: async (): Promise<AllWebhooksResponse> => {
+    const response = await api.get<AllWebhooksResponse>('/api/webhooks');
+    return response.data;
+  },
+
+  getSummary: async (): Promise<WebhookStatusSummary> => {
+    const response = await api.get<WebhookStatusSummary>('/api/webhooks/summary');
+    return response.data;
+  },
+
+  getConfig: async (customerName: string): Promise<WebhookConfigDetail> => {
+    const response = await api.get<WebhookConfigDetail>(`/api/webhooks/${customerName}`);
+    return response.data;
+  },
+
+  validate: async (customerName: string): Promise<WebhookValidation> => {
+    const response = await api.post<WebhookValidation>(`/api/webhooks/${customerName}/validate`);
+    return response.data;
+  },
+
+  validateAll: async (): Promise<WebhookValidation[]> => {
+    const response = await api.post<WebhookValidation[]>('/api/webhooks/validate-all');
+    return response.data;
+  },
+
+  getInstructions: async (customerName: string): Promise<{
+    customer_name: string;
+    webhook_url: string;
+    instructions: string;
+    alertmanager_url: string;
+  }> => {
+    const response = await api.get(`/api/webhooks/${customerName}/instructions`);
+    return response.data;
+  },
+};
+
 // Grafana Servers API (backwards compatibility)
 export const grafanaServersApi = {
   list: async (): Promise<GrafanaServersResponse> => {
@@ -219,7 +275,7 @@ export const customersApi = {
     const response = await api.post<SwitchServerResponse>('/api/customers/reconnect', {
       customer_name: customerName,
     });
-    return response.data;
+    return response.data;;
   },
 
   getContainerHealth: async (customerName: string): Promise<CustomerContainersHealth> => {

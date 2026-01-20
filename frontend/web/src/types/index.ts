@@ -254,3 +254,39 @@ export interface WebhookStatusResponse {
   total_customers: number;
   customers_with_alerts: number;
 }
+
+// Webhook Management types
+export interface WebhookConfig {
+  customer_name: string;
+  webhook_url: string;
+  alertmanager_url: string;
+  status: 'unknown' | 'configured' | 'pending' | 'error' | 'not_configured';
+  last_alert_received: string | null;
+  total_alerts_received: number;
+  last_check: string | null;
+  last_error: string | null;
+}
+
+export interface WebhookConfigDetail extends WebhookConfig {
+  config_instructions: string;
+}
+
+export interface WebhookStatusSummary {
+  total_customers: number;
+  by_status: Record<string, number>;
+  customers_with_alerts: number;
+  webhook_base_url: string;
+}
+
+export interface AllWebhooksResponse {
+  webhooks: WebhookConfig[];
+  summary: WebhookStatusSummary;
+}
+
+export interface WebhookValidation {
+  customer_name: string;
+  is_valid: boolean;
+  alertmanager_reachable: boolean;
+  webhook_configured: boolean;
+  error: string | null;
+}

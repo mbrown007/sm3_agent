@@ -11,6 +11,8 @@ from backend.api.monitoring import router as monitoring_router
 from backend.api.monitoring_v2 import router as monitoring_v2_router
 from backend.api.alerts import router as alerts_router
 from backend.api.mcp import router as mcp_router
+from backend.api.webhooks import router as webhooks_router
+from backend.services.webhook_manager import get_webhook_manager
 from backend.schemas.models import ChatRequest, ChatResponse
 from backend.telemetry.metrics import (
     chat_requests_total,
@@ -62,6 +64,7 @@ app.add_middleware(
 app.include_router(monitoring_router)  # Legacy v1 monitoring
 app.include_router(monitoring_v2_router)  # New multi-customer monitoring (v2)
 app.include_router(alerts_router, prefix="/api")
+app.include_router(webhooks_router, prefix="/api")  # Webhook management
 app.include_router(mcp_router)
 
 
@@ -113,6 +116,18 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Proactive monitoring initialization failed: {e}")
         logger.warning("Proactive monitoring will not be available")
+
+    # Initialize webhook manager for all customers
+    try:
+        webhook_manager = get_webhook_manager()
+        await webhook_manager.initialize()
+        webhooks = webhook_manager.get_all_webhooks()
+        logger.info(f"Webhook manager initialized with {len(webhooks)} customer webhooks")
+        for wh in webhooks:
+            logger.info(f"  - {wh.customer_name}: {wh.webhook_url}")
+    except Exception as e:
+        logger.warning(f"Webhook manager initialization failed: {e}")
+        logger.warning("Webhook management may not be fully available")
 
 
 @app.on_event("shutdown")

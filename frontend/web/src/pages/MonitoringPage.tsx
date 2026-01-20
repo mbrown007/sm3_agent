@@ -13,9 +13,13 @@ import {
   AlertCircle,
   Server,
   Database,
-  MessageSquare
+  MessageSquare,
+  Webhook,
+  Settings,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
-import { monitoringApi, alertsApi, mcpApi, nocMonitoringApi } from '@/services/api';
+import { monitoringApi, alertsApi, mcpApi, nocMonitoringApi, webhooksApi } from '@/services/api';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function MonitoringPage() {
@@ -24,6 +28,8 @@ export default function MonitoringPage() {
   const [selectedSeverity, setSelectedSeverity] = useState<string>('low');
   const [expandedAnalysisId, setExpandedAnalysisId] = useState<string | null>(null);
   const [currentCustomer, setCurrentCustomer] = useState<string | null>(null);
+  const [showWebhookConfig, setShowWebhookConfig] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'analyses' | 'webhooks'>('analyses');
 
   // Listen for customer switch events
   useEffect(() => {
@@ -34,6 +40,8 @@ export default function MonitoringPage() {
       queryClient.invalidateQueries({ queryKey: ['monitoring-targets'] });
       queryClient.invalidateQueries({ queryKey: ['monitoring-alerts'] });
       queryClient.invalidateQueries({ queryKey: ['customer-datasources'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-analyses'] });
+      queryClient.invalidateQueries({ queryKey: ['webhook-config'] });
     };
 
     window.addEventListener('customerSwitch', handleCustomerSwitch as EventListener);
@@ -84,9 +92,19 @@ export default function MonitoringPage() {
 
   const mcpMode = mcpModeData?.mode || 'suggest';
 
+  // Fetch all webhooks status
+  const { data: webhooksData, isLoading: webhooksLoading } = useQuery({
+    queryKey: ['all-webhooks'],
+    queryFn: webhooksApi.getAll,
+    refetchInterval: 30000,
+  });
+
+  // Fetch analyses - either all or customer-specific
   const { data: analysesData, isLoading: analysesLoading } = useQuery({
-    queryKey: ['alert-analyses'],
-    queryFn: alertsApi.getAnalyses,
+    queryKey: ['alert-analyses', currentCustomer],
+    queryFn: () => currentCustomer
+      ? alertsApi.getAnalysesForCustomer(currentCustomer)
+      : alertsApi.getAnalyses(),
     refetchInterval: 10000,
   });
 
@@ -96,6 +114,21 @@ export default function MonitoringPage() {
     queryKey: ['alert-analysis', expandedAnalysisId],
     queryFn: () => alertsApi.getAnalysis(expandedAnalysisId || ''),
     enabled: !!expandedAnalysisId,
+  });
+
+  // Fetch webhook config for current customer
+  const { data: webhookConfig } = useQuery({
+    queryKey: ['webhook-config', currentCustomer],
+    queryFn: () => currentCustomer ? webhooksApi.getConfig(currentCustomer) : null,
+    enabled: !!currentCustomer,
+  });
+
+  // Validate webhook mutation
+  const validateWebhookMutation = useMutation({
+    mutationFn: (customerName: string) => webhooksApi.validate(customerName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-webhooks'] });
+    },
   });
 
   // Start monitoring mutation (use new API if customer selected)
@@ -211,6 +244,38 @@ Please help me investigate this further. Can you:
     navigate('/chat');
   };
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+  };
+
+  const getWebhookStatusColor = (status: string) => {
+    switch (status) {
+      case 'configured':
+        return 'text-green-400 bg-green-500/20';
+      case 'pending':
+        return 'text-yellow-400 bg-yellow-500/20';
+      case 'error':
+        return 'text-red-400 bg-red-500/20';
+      case 'not_configured':
+        return 'text-gray-400 bg-gray-500/20';
+      default:
+        return 'text-gray-400 bg-gray-500/20';
+    }
+  };
+
+  const getWebhookStatusIcon = (status: string) => {
+    switch (status) {
+      case 'configured':
+        return <CheckCircle2 className="w-4 h-4 text-green-400" />;
+      case 'pending':
+        return <Clock className="w-4 h-4 text-yellow-400" />;
+      case 'error':
+        return <XCircle className="w-4 h-4 text-red-400" />;
+      default:
+        return <AlertCircle className="w-4 h-4 text-gray-400" />;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Customer Context Banner */}
@@ -224,6 +289,17 @@ Please help me investigate this further. Can you:
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {webhookConfig && (
+              <div className="flex items-center gap-2 text-sm">
+                {getWebhookStatusIcon(webhookConfig.status)}
+                <span className={`px-2 py-0.5 rounded text-xs ${getWebhookStatusColor(webhookConfig.status)}`}>
+                  {webhookConfig.status}
+                </span>
+                <span className="text-gray-400">
+                  {webhookConfig.total_alerts_received} alerts received
+                </span>
+              </div>
+            )}
             {datasources.length > 0 && (
               <div className="flex items-center gap-2 text-sm text-gray-400">
                 <Database className="w-4 h-4" />
@@ -241,8 +317,46 @@ Please help me investigate this further. Can you:
         </div>
       )}
 
+      {/* Tabs */}
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Alert Analyses</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveTab('analyses')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              activeTab === 'analyses'
+                ? 'bg-orange-500 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              Alert Analyses
+              {analyses.length > 0 && (
+                <span className="bg-gray-800 px-2 py-0.5 rounded-full text-xs">
+                  {analyses.length}
+                </span>
+              )}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('webhooks')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              activeTab === 'webhooks'
+                ? 'bg-orange-500 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Webhook className="w-4 h-4" />
+              Webhook Status
+              {webhooksData?.summary && (
+                <span className="bg-gray-800 px-2 py-0.5 rounded-full text-xs">
+                  {webhooksData.summary.customers_with_alerts}/{webhooksData.summary.total_customers}
+                </span>
+              )}
+            </span>
+          </button>
+        </div>
         <div className="flex gap-2">
           <button
             onClick={() => queryClient.invalidateQueries()}
@@ -489,15 +603,24 @@ Please help me investigate this further. Can you:
       </div>
       )}
 
-      {/* Alert Analyses */}
+      {/* Alert Analyses Tab */}
+      {activeTab === 'analyses' && (
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         {analysesLoading ? (
           <div className="text-center text-gray-400 py-12">Loading analyses...</div>
         ) : analyses.length === 0 ? (
           <div className="text-center text-gray-400 py-12">
             <AlertCircle className="w-12 h-12 mx-auto mb-3 text-gray-600" />
-            <p>No alert analyses yet.</p>
+            <p>No alert analyses yet{currentCustomer ? ` for ${currentCustomer}` : ''}.</p>
             <p className="text-sm mt-2">Alerts received from AlertManager will be analyzed and shown here.</p>
+            {currentCustomer && webhookConfig && (
+              <div className="mt-4">
+                <p className="text-sm text-gray-500">Webhook URL:</p>
+                <code className="text-xs bg-gray-900 px-2 py-1 rounded text-orange-400">
+                  {webhookConfig.webhook_url}
+                </code>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -605,6 +728,166 @@ Please help me investigate this further. Can you:
           </div>
         )}
       </div>
+      )}
+
+      {/* Webhooks Tab */}
+      {activeTab === 'webhooks' && (
+      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+        {webhooksLoading ? (
+          <div className="text-center text-gray-400 py-12">Loading webhook status...</div>
+        ) : !webhooksData?.webhooks || webhooksData.webhooks.length === 0 ? (
+          <div className="text-center text-gray-400 py-12">
+            <Webhook className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+            <p>No webhook configurations found.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
+                <div className="text-sm text-gray-400">Total Customers</div>
+                <div className="text-2xl font-bold">{webhooksData.summary.total_customers}</div>
+              </div>
+              <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
+                <div className="text-sm text-gray-400">Receiving Alerts</div>
+                <div className="text-2xl font-bold text-green-400">{webhooksData.summary.customers_with_alerts}</div>
+              </div>
+              <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
+                <div className="text-sm text-gray-400">Configured</div>
+                <div className="text-2xl font-bold text-green-400">{webhooksData.summary.by_status.configured || 0}</div>
+              </div>
+              <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
+                <div className="text-sm text-gray-400">Pending</div>
+                <div className="text-2xl font-bold text-yellow-400">{webhooksData.summary.by_status.pending || webhooksData.summary.by_status.unknown || 0}</div>
+              </div>
+            </div>
+
+            {/* Webhook List */}
+            <div className="space-y-3">
+              {webhooksData.webhooks.map((webhook) => (
+                <div
+                  key={webhook.customer_name}
+                  className="bg-gray-900/50 border border-gray-700 rounded-lg p-4"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        {getWebhookStatusIcon(webhook.status)}
+                        <span className="font-semibold">{webhook.customer_name}</span>
+                        <span className={`px-2 py-0.5 rounded text-xs ${getWebhookStatusColor(webhook.status)}`}>
+                          {webhook.status}
+                        </span>
+                        {webhook.total_alerts_received > 0 && (
+                          <span className="text-xs text-green-400">
+                            {webhook.total_alerts_received} alerts received
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-500">Webhook:</span>
+                          <code className="bg-gray-800 px-2 py-0.5 rounded text-orange-400">
+                            {webhook.webhook_url}
+                          </code>
+                          <button
+                            onClick={() => copyToClipboard(webhook.webhook_url)}
+                            className="text-gray-500 hover:text-gray-300"
+                            title="Copy URL"
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-500">AlertManager:</span>
+                          <code className="bg-gray-800 px-2 py-0.5 rounded text-blue-400">
+                            {webhook.alertmanager_url}
+                          </code>
+                          <a
+                            href={webhook.alertmanager_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-gray-500 hover:text-gray-300"
+                            title="Open AlertManager"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                        {webhook.last_alert_received && (
+                          <div>
+                            <span className="text-gray-500">Last alert:</span>{' '}
+                            {formatDistanceToNow(new Date(webhook.last_alert_received), { addSuffix: true })}
+                          </div>
+                        )}
+                        {webhook.last_error && (
+                          <div className="text-red-400">
+                            <span className="text-gray-500">Error:</span> {webhook.last_error}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => validateWebhookMutation.mutate(webhook.customer_name)}
+                        disabled={validateWebhookMutation.isPending}
+                        className="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors"
+                      >
+                        {validateWebhookMutation.isPending ? 'Validating...' : 'Validate'}
+                      </button>
+                      <button
+                        onClick={() => setShowWebhookConfig(
+                          showWebhookConfig === webhook.customer_name ? null : webhook.customer_name
+                        )}
+                        className="text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded transition-colors"
+                      >
+                        <Settings className="w-3 h-3 inline mr-1" />
+                        Config
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Configuration Instructions */}
+                  {showWebhookConfig === webhook.customer_name && (
+                    <div className="mt-4 border-t border-gray-700 pt-4">
+                      <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">
+                        AlertManager Configuration
+                      </div>
+                      <pre className="bg-gray-900 p-3 rounded text-xs text-gray-300 overflow-x-auto">
+{`# Add to alertmanager.yml receivers section:
+receivers:
+  - name: 'sm3-webhook'
+    webhook_configs:
+      - url: '${webhook.webhook_url}'
+        send_resolved: true
+
+# Reference in route:
+route:
+  receiver: 'sm3-webhook'
+  routes:
+    - match:
+        severity: critical
+      receiver: 'sm3-webhook'
+      continue: true`}
+                      </pre>
+                      <button
+                        onClick={() => copyToClipboard(`receivers:
+  - name: 'sm3-webhook'
+    webhook_configs:
+      - url: '${webhook.webhook_url}'
+        send_resolved: true`)}
+                        className="mt-2 text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                      >
+                        <Copy className="w-3 h-3" />
+                        Copy configuration
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      )}
     </div>
   );
 }

@@ -598,6 +598,14 @@ async def alertmanager_ingest_customer(
         last_alert_received=datetime.utcnow().isoformat(),
         total_alerts_received=get_webhook_state(customer_name).get("total_alerts_received", 0) + len(payload.alerts)
     )
+    
+    # Also update webhook manager to track reception
+    try:
+        from backend.services.webhook_manager import get_webhook_manager
+        webhook_manager = get_webhook_manager()
+        webhook_manager.record_alert_received(customer_name)
+    except Exception as e:
+        logger.debug(f"Could not update webhook manager: {e}")
 
     if payload.status != "firing":
         logger.info(f"Ignoring {payload.status} alert for {customer_name}")
@@ -1517,6 +1525,55 @@ async def list_alert_analyses(limit: int = 50, customer_name: Optional[str] = No
             analyses.append({
                 "id": data.get("id", analysis_file.stem),
                 "customer_name": data.get("customer_name"),
+                "alert_name": data.get("alert_name", "Unknown Alert"),
+                "severity": data.get("severity", "info"),
+                "status": data.get("status", "unknown"),
+                "received_at": data.get("received_at"),
+                "kb_matches": data.get("kb_matches", []),
+                "summary": investigation.get("root_cause_hypothesis", ""),
+                "confidence": investigation.get("confidence", 0)
+            })
+        except Exception as exc:
+            logger.error(f"Error reading analysis {analysis_file}: {exc}")
+
+    return {
+        "count": len(analyses),
+        "customer_name": customer_name,
+        "analyses": analyses
+    }
+
+
+@router.get("/analyses/customer/{customer_name}")
+async def list_customer_analyses(customer_name: str, limit: int = 50):
+    """
+    List alert analyses for a specific customer.
+    
+    Args:
+        customer_name: Customer name to filter by
+        limit: Maximum number of analyses to return
+    """
+    # Validate customer exists
+    server_manager = get_mcp_server_manager()
+    customer = server_manager.get_customer(customer_name)
+    if not customer:
+        raise HTTPException(status_code=404, detail=f"Customer '{customer_name}' not found")
+    
+    # Get customer-specific analyses
+    analysis_dir = _get_analysis_dir(customer_name)
+    analysis_files = sorted(
+        analysis_dir.glob("*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True
+    )[:limit]
+
+    analyses = []
+    for analysis_file in analysis_files:
+        try:
+            data = json.loads(analysis_file.read_text(encoding="utf-8"))
+            investigation = data.get("investigation", {})
+            analyses.append({
+                "id": data.get("id", analysis_file.stem),
+                "customer_name": data.get("customer_name", customer_name),
                 "alert_name": data.get("alert_name", "Unknown Alert"),
                 "severity": data.get("severity", "info"),
                 "status": data.get("status", "unknown"),

@@ -61,6 +61,13 @@ class Settings(BaseSettings):
         env="ALERT_ANALYSIS_DIR",
         description="Path to store alert analysis outputs"
     )
+    
+    # Webhook configuration
+    webhook_base_url: Optional[str] = Field(
+        None,
+        env="WEBHOOK_BASE_URL",
+        description="Public URL base for webhooks (e.g., https://sm3.example.com). If not set, defaults to http://localhost:8000"
+    )
 
     # CORS configuration
     cors_origins: Union[str, List[str]] = Field(

@@ -2,7 +2,8 @@
 
 An intelligent AI chat agent for multi-customer monitoring infrastructure, supporting Grafana, AlertManager, and Genesys Cloud.
 
-<img width="1593" alt="SM3 Agent Dashboard" src="https://github.com/user-attachments/assets/178120da-6427-4abd-97b3-bf9b4370c816" />
+<img width="1644" height="922" alt="image" src="https://github.com/user-attachments/assets/d7870da7-f3b2-43dd-9fda-6e9e9abdaf89" />
+
 
 ## Features
 

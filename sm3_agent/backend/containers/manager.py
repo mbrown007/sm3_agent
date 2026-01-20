@@ -72,13 +72,13 @@ class ContainerConfig:
     
     @property
     def url(self) -> str:
-        """Get the MCP server URL (for client connections via host.docker.internal)."""
-        return f"http://host.docker.internal:{self.port}/mcp"
+        """Get the MCP server URL (for client connections via container name on shared network)."""
+        return f"http://{self.container_name}:{self.internal_port}/mcp"
     
     @property
     def health_url(self) -> str:
-        """Get the health check URL (via host.docker.internal for Docker-to-Docker)."""
-        return f"http://host.docker.internal:{self.port}{self.health_endpoint}"
+        """Get the health check URL (via container name on shared network)."""
+        return f"http://{self.container_name}:{self.internal_port}{self.health_endpoint}"
 
 
 @dataclass
@@ -254,8 +254,34 @@ class MCPContainerManager:
             logger.info(f"Creating Docker network: {self._network_name}")
             self.docker.networks.create(self._network_name, driver="bridge")
     
+    def _scan_existing_containers(self) -> None:
+        """Scan existing sm3-mcp containers and populate port allocations."""
+        try:
+            containers = self.docker.containers.list(
+                all=True,
+                filters={"name": "sm3-mcp-"}
+            )
+            for container in containers:
+                name = container.name
+                # Get port mappings
+                if container.status == "running":
+                    ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
+                    for internal_port, bindings in ports.items():
+                        if bindings:
+                            host_port = int(bindings[0].get("HostPort", 0))
+                            if host_port and name not in self._port_allocations:
+                                self._port_allocations[name] = host_port
+                                logger.debug(f"Discovered existing container {name} using port {host_port}")
+            logger.info(f"Scanned {len(containers)} existing containers, {len(self._port_allocations)} port allocations")
+        except Exception as e:
+            logger.warning(f"Failed to scan existing containers: {e}")
+    
     def _allocate_port(self, mcp_type: MCPType, container_name: str) -> int:
         """Allocate a port for a container."""
+        # Ensure we know about existing containers first
+        if not self._port_allocations:
+            self._scan_existing_containers()
+        
         # Check if already allocated
         if container_name in self._port_allocations:
             return self._port_allocations[container_name]
@@ -299,6 +325,13 @@ class MCPContainerManager:
         
         elif mcp_type == MCPType.ALERTMANAGER:
             environment["ALERTMANAGER_URL"] = config.get("alertmanager_url", "")
+            # Support basic auth for AlertManager
+            username_env = config.get("username_env", "")
+            password_env = config.get("password_env", "")
+            if username_env:
+                environment["ALERTMANAGER_USERNAME"] = os.environ.get(username_env, "")
+            if password_env:
+                environment["ALERTMANAGER_PASSWORD"] = os.environ.get(password_env, "")
         
         elif mcp_type == MCPType.GENESYS:
             environment["GENESYSCLOUD_REGION"] = config.get("region", "mypurecloud.com")
@@ -389,7 +422,9 @@ class MCPContainerManager:
                 detach=True,
                 environment=config.environment,
                 ports={f"{config.internal_port}/tcp": config.port},  # Expose port on host
+                network=self._network_name,  # Connect to shared network
                 dns=["8.8.8.8", "8.8.4.4"],  # Use Google DNS for external resolution
+                extra_hosts={"host.docker.internal": "host-gateway"},  # Allow access to host
                 restart_policy={"Name": "unless-stopped"},
                 labels={
                     "sm3.managed": "true",

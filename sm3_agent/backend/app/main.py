@@ -357,6 +357,11 @@ class SwitchCustomerRequest(BaseModel):
     customer_name: str
 
 
+class ReconnectCustomerRequest(BaseModel):
+    """Request model for reconnecting to a customer."""
+    customer_name: Optional[str] = None
+
+
 class SwitchServerResponse(BaseModel):
     """Response model for switching servers."""
     success: bool
@@ -496,47 +501,53 @@ async def switch_customer(request: SwitchCustomerRequest) -> SwitchServerRespons
 
 
 @app.post("/api/customers/reconnect", response_model=SwitchServerResponse)
-async def reconnect_customer() -> SwitchServerResponse:
+async def reconnect_customer(request: ReconnectCustomerRequest) -> SwitchServerResponse:
     """
-    Reconnect to the current customer's MCP servers.
+    Reconnect to a customer's MCP servers.
     
-    This restarts containers for the current customer without switching.
+    This restarts containers for the specified customer (or current if not specified).
     Useful when containers have failed or need to be refreshed.
+    
+    Args:
+        request: Contains customer_name to reconnect (optional)
     
     Returns:
         Success status with connected MCP types and tool count
     """
-    current_customer_name = agent_manager.get_current_server_name()
+    # Use provided customer name, or fall back to current
+    customer_name = request.customer_name
+    if not customer_name:
+        customer_name = agent_manager.get_current_server_name()
     
-    if not current_customer_name:
+    if not customer_name:
         return SwitchServerResponse(
             success=False,
             server_name="",
-            message="No customer currently selected"
+            message="No customer specified and none currently selected"
         )
     
-    customer = server_manager.get_customer(current_customer_name)
+    customer = server_manager.get_customer(customer_name)
     
     if not customer:
         return SwitchServerResponse(
             success=False,
-            server_name=current_customer_name,
-            message=f"Unknown customer: {current_customer_name}"
+            server_name=customer_name,
+            message=f"Unknown customer: {customer_name}"
         )
     
     try:
         # Force rebuild by switching to the same customer
-        result = await agent_manager.switch_customer(current_customer_name, force_restart=True)
+        result = await agent_manager.switch_customer(customer_name, force_restart=True)
         grafana_server = customer.get_server_by_type("grafana")
         
         logger.info(
-            f"Reconnect customer {current_customer_name}: success={result.success}, "
+            f"Reconnect customer {customer_name}: success={result.success}, "
             f"connected={result.connected_mcps}, failed={result.failed_mcps}, tools={result.tool_count}"
         )
         
         return SwitchServerResponse(
             success=result.success,
-            server_name=current_customer_name,
+            server_name=customer_name,
             server_url=grafana_server.url if grafana_server else None,
             message=result.message,
             mcp_server_count=len(customer.mcp_servers),
@@ -550,7 +561,7 @@ async def reconnect_customer() -> SwitchServerResponse:
         logger.error(f"Error reconnecting customer: {e}", exc_info=True)
         return SwitchServerResponse(
             success=False,
-            server_name=current_customer_name,
+            server_name=customer_name,
             message=f"Error: {str(e)}"
         )
 

@@ -32,6 +32,11 @@ export default function Layout({ children }: LayoutProps) {
     if (saved !== null) {
       setShowToolCalls(saved === 'true');
     }
+    // Restore saved customer
+    const savedCustomer = localStorage.getItem('currentCustomer');
+    if (savedCustomer) {
+      setCurrentCustomer(savedCustomer);
+    }
   }, []);
 
   const handleToggleToolCalls = () => {
@@ -49,6 +54,13 @@ export default function Layout({ children }: LayoutProps) {
     loadCustomers();
   }, []);
 
+  // Save customer to localStorage whenever it changes
+  useEffect(() => {
+    if (currentCustomer) {
+      localStorage.setItem('currentCustomer', currentCustomer);
+    }
+  }, [currentCustomer]);
+
   const loadCustomers = async () => {
     try {
       setIsLoading(true);
@@ -56,7 +68,10 @@ export default function Layout({ children }: LayoutProps) {
       try {
         const response = await customersApi.list();
         setCustomers(response.customers);
-        setCurrentCustomer(response.current || response.default || null);
+        // Use saved customer from localStorage, or API current/default
+        const savedCustomer = localStorage.getItem('currentCustomer');
+        const initialCustomer = savedCustomer || response.current || response.default || null;
+        setCurrentCustomer(initialCustomer);
         
         // Load health for current customer
         if (response.current || response.default) {
@@ -141,7 +156,7 @@ export default function Layout({ children }: LayoutProps) {
       setIsSwitching(true);
       setSwitchProgress('Reconnecting...');
       
-      const response = await customersApi.reconnect();
+      const response = await customersApi.reconnect(currentCustomer);
       
       if (response.success) {
         setConnectedMcps(response.connected_mcps || []);

@@ -18,7 +18,7 @@
         {
           "type": "alertmanager",
           "config": {
-            "alertmanager_url": "https://maas-ng-acolad.acolad.services.sabio.co.uk:9093"
+            "alertmanager_url": "https://maas-1206.mon.sabio.cloud/alertmanager"
           }
         },
         {
@@ -47,7 +47,7 @@
         {
           "type": "alertmanager",
           "config": {
-            "alertmanager_url": "https://maas-ng-bromford.bromford.services.sabio.co.uk:9093"
+            "alertmanager_url": "https://maas-1212.mon.sabio.cloud/alertmanager"
           }
         },
         {
@@ -76,7 +76,7 @@
         {
           "type": "alertmanager",
           "config": {
-            "alertmanager_url": "https://maas-ng-butlins.butlins.services.sabio.co.uk:9093"
+            "alertmanager_url": "https://maas-1213.mon.sabio.cloud/alertmanager"
           }
         },
         {
@@ -105,7 +105,7 @@
         {
           "type": "alertmanager",
           "config": {
-            "alertmanager_url": "https://maas-ng-caixabank.caixabank.services.sabio.co.uk:9093"
+            "alertmanager_url": "https://maas-1205.mon.sabio.cloud/alertmanager"
           }
         },
         {
@@ -134,7 +134,7 @@
         {
           "type": "alertmanager",
           "config": {
-            "alertmanager_url": "https://maas-ng-daviesgroup.daviesgroup.services.sabio.co.uk:9093"
+            "alertmanager_url": "https://maas-1105.mon.sabio.cloud/alertmanager"
           }
         },
         {
@@ -163,7 +163,7 @@
         {
           "type": "alertmanager",
           "config": {
-            "alertmanager_url": "https://maas-ng-essent.essent.services.sabio.co.uk:9093"
+            "alertmanager_url": "https://maas-1207.mon.sabio.cloud/alertmanager"
           }
         },
         {
@@ -192,7 +192,7 @@
         {
           "type": "alertmanager",
           "config": {
-            "alertmanager_url": "https://maas-ng-iwg.services.sabio.co.uk:9093"
+            "alertmanager_url": "https://maas-1209.mon.sabio.cloud/alertmanager"
           }
         },
         {
@@ -221,7 +221,7 @@
         {
           "type": "alertmanager",
           "config": {
-            "alertmanager_url": "https://maas-ng-postcodelottery.services.sabio.co.uk:9093"
+            "alertmanager_url": "https://maas-1208.mon.sabio.cloud/alertmanager"
           }
         },
         {
@@ -250,7 +250,7 @@
         {
           "type": "alertmanager",
           "config": {
-            "alertmanager_url": "https://maas-ng-segurcaixa.segurcaixa.services.sabio.co.uk:9093"
+            "alertmanager_url": "https://maas-1171.mon.sabio.cloud/alertmanager"
           }
         },
         {
@@ -279,7 +279,9 @@
         {
           "type": "alertmanager",
           "config": {
-            "alertmanager_url": "https://maas-ng-vattenfall.services.sabio.co.uk:9093"
+            "alertmanager_url": "https://maas-1203.mon.sabio.cloud/alertmanager",
+            "username_env": "ALERTMANAGER_USERNAME",
+            "password_env": "ALERTMANAGER_PASSWORD"
           }
         },
         {
@@ -308,7 +310,7 @@
         {
           "type": "alertmanager",
           "config": {
-            "alertmanager_url": "https://maas-ng-vattenfall-se.services.sabio.co.uk:9093"
+            "alertmanager_url": "https://maas-1204.mon.sabio.cloud/alertmanager"
           }
         },
         {
@@ -337,7 +339,7 @@
         {
           "type": "alertmanager",
           "config": {
-            "alertmanager_url": "https://maas-ng-vattenfall-nl.services.sabio.co.uk:9093"
+            "alertmanager_url": "https://maas-1210.mon.sabio.cloud/alertmanager"
           }
         },
         {
